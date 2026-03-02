@@ -46,9 +46,9 @@ header h1 { text-align: center; color: var(--primary); }
 button { cursor: pointer; border-radius: 8px; font-weight: bold; border: none; }
 .btn-confirmar { background: var(--primary); width: 100%; padding: 15px; color: white; margin-top: 10px; font-size: 1.1em;}
 .btn-repetir { background: transparent; width: 100%; padding: 15px; color: var(--light); border: 2px solid var(--light); margin-top: 10px;}
-.btn-primary { background: var(--primary); color: white; width: 100%; padding: 10px; }
-.btn-danger { background: var(--danger); color: white; flex: 1; padding: 10px; }
-.btn-secondary { background: #555; color: white; flex: 1; padding: 10px; }
+.btn-primary { background: var(--primary); color: white; width: 100%; padding: 10px; margin-top: 5px;}
+.btn-danger { background: var(--danger); color: white; width: 48%; padding: 10px; }
+.btn-secondary { background: #555; color: white; width: 48%; padding: 10px; }
 
 .tabs { display: flex; gap: 10px; margin-bottom: 15px; }
 .tabs button { flex: 1; padding: 10px; background: #444; color: white; }
