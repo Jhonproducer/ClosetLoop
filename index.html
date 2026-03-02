@@ -3,30 +3,37 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>ClosetLoop</title>
+    <title>Rotación de Ropa</title>
     <link rel="stylesheet" href="style.css">
 </head>
 <body>
     <div class="app-container">
         <header>
-            <h1>👕 ClosetLoop</h1>
-            <div id="lavado-alert" class="alert hidden">⚠️ ¡Alerta! Te queda muy poca ropa limpia.</div>
+            <h1>🔄 RotaRopa</h1>
+            <p id="estado-cesto" class="alerta-cesto">Cesto vacío</p>
         </header>
 
-        <section class="outfit-sugerido">
-            <h2 style="font-size: 1.2em; margin-bottom: 10px;">Outfit Sugerido</h2>
-            <div class="display-outfit">
-                <div id="sugerencia-superior" class="card"></div>
-                <div id="sugerencia-inferior" class="card"></div>
+        <section class="panel-principal">
+            <h2>👕 Tienes puesto ahora:</h2>
+            <div class="outfit-display" id="outfit-actual">
+                </div>
+            
+            <div class="acciones-ducha">
+                <button onclick="meVoyABanar(false)" class="btn-ducha">🚿 Me voy a bañar (Cambiar todo)</button>
+                <button onclick="meVoyABanar(true)" class="btn-reciclar">♻️ El short aguanta (Cambiar solo franela)</button>
             </div>
-            <button onclick="confirmarUso()" class="btn-confirmar">✅ Me lo puse hoy</button>
-            <button onclick="marcarSemiSucio()" class="btn-repetir">♻️ Repetir pantalón mañana</button>
         </section>
 
-        <section class="inventario" style="margin-top: 30px;">
+        <section class="panel-sugerencia">
+            <h2>🔜 Próxima muda (La menos usada):</h2>
+            <div class="outfit-display" id="outfit-sugerido">
+                </div>
+        </section>
+
+        <section class="panel-inventario">
             <div class="tabs">
-                <button id="tab-sup" class="active" onclick="filtrar('superior')">Franelas</button>
-                <button id="tab-inf" onclick="filtrar('inferior')">Shorts / Pant.</button>
+                <button onclick="verPestana('limpio')" id="tab-limpio" class="active">✨ Limpios</button>
+                <button onclick="verPestana('sucio')" id="tab-sucio">🧺 Cesto</button>
             </div>
             <div id="lista-ropa" class="grid-ropa"></div>
         </section>
@@ -35,18 +42,20 @@
 
         <div id="modal" class="modal hidden">
             <div class="modal-content">
-                <h3 style="margin-top:0; color:#fff;">Nueva Prenda</h3>
-                <input type="text" id="nombre-prenda" placeholder="Ej: Franela Nike Negra" maxlength="30">
+                <h3>Añadir Prenda</h3>
+                <input type="text" id="nombre-prenda" placeholder="Ej: Franela Azul" maxlength="25">
                 <select id="tipo-prenda">
-                    <option value="superior">Es una Franela</option>
-                    <option value="inferior">Es un Short/Pantalón</option>
+                    <option value="superior">Franela</option>
+                    <option value="inferior">Short / Pantalón</option>
                 </select>
                 <input type="file" id="foto-prenda" accept="image/*" capture="camera">
-                <button onclick="guardarPrenda()" class="btn-guardar">Guardar Prenda</button>
+                <button onclick="guardarPrenda()" class="btn-guardar">Guardar</button>
                 <button onclick="cerrarModal()" class="btn-cerrar">Cancelar</button>
             </div>
         </div>
     </div>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/localforage/1.10.0/localforage.min.js"></script>
     <script src="app.js"></script>
 </body>
 </html>
