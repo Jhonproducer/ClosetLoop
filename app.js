@@ -8,7 +8,7 @@ window.onload = () => {
 function actualizarPantalla() {
     generarSugerencia();
     verificarLavado();
-    renderInventario('superior');
+    renderInventario('superior'); // Al iniciar muestra las franelas
 }
 
 function generarSugerencia() {
@@ -61,7 +61,6 @@ function verificarLavado() {
 function abrirModal() { document.getElementById('modal').classList.remove('hidden'); }
 function cerrarModal() { document.getElementById('modal').classList.add('hidden'); }
 
-// --- EL ARREGLO: COMPRESOR DE IMÁGENES ---
 function guardarPrenda() {
     let nombre = document.getElementById('nombre-prenda').value;
     let tipo = document.getElementById('tipo-prenda').value;
@@ -73,17 +72,15 @@ function guardarPrenda() {
     reader.onload = function(e) {
         let img = new Image();
         img.onload = function() {
-            // Creamos un lienzo para achicar la foto
             let canvas = document.createElement('canvas');
             let ctx = canvas.getContext('2d');
-            let maxWidth = 400; // Tamaño máximo
+            let maxWidth = 400; // Esto comprime la foto para que no se tranque la app
             let scaleSize = maxWidth / img.width;
             canvas.width = maxWidth;
             canvas.height = img.height * scaleSize;
             
-            // Dibujamos y comprimimos la imagen
             ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
-            let fotoComprimida = canvas.toDataURL('image/jpeg', 0.6); // 60% de calidad
+            let fotoComprimida = canvas.toDataURL('image/jpeg', 0.6); 
 
             let nuevaPrenda = {
                 id: Date.now(), nombre: nombre, tipo: tipo,
@@ -92,7 +89,7 @@ function guardarPrenda() {
             inventario.push(nuevaPrenda);
             guardarDatos();
             cerrarModal();
-            document.getElementById('nombre-prenda').value = ''; // Limpiar el input
+            document.getElementById('nombre-prenda').value = ''; 
             actualizarPantalla();
         };
         img.src = e.target.result;
@@ -100,7 +97,6 @@ function guardarPrenda() {
     reader.readAsDataURL(archivoFoto);
 }
 
-// --- SISTEMA DE INVENTARIO Y REPARACIÓN ---
 function renderInventario(tipoFiltro) {
     let contenedor = document.getElementById('lista-ropa');
     contenedor.innerHTML = '';
@@ -115,8 +111,10 @@ function renderInventario(tipoFiltro) {
             botonesHTML = `<button class="btn-primary" onclick="volverDeReparacion(${p.id})">🔙 Volvió de costura</button>`;
         } else {
             botonesHTML = `
-                <button class="btn-danger" onclick="mandarALavar(${p.id})">🧺 Al Cesto</button>
-                <button class="btn-secondary" onclick="mandarAReparar(${p.id})">🪡 Reparar</button>
+                <div style="display:flex; gap:4%; margin-top:10px;">
+                    <button class="btn-danger" onclick="mandarALavar(${p.id})">🧺 Al Cesto</button>
+                    <button class="btn-secondary" onclick="mandarAReparar(${p.id})">🪡 Reparar</button>
+                </div>
             `;
         }
 
@@ -130,8 +128,9 @@ function renderInventario(tipoFiltro) {
         div.innerHTML = `
             <img src="${p.foto}" width="100%" style="border-radius:10px; height: 180px; object-fit: cover;">
             <p style="margin: 10px 0;"><strong>${p.nombre}</strong></p>
-            <p style="font-size: 0.9em; margin: 5px 0;">Usos: ${p.usos} | <strong>${estadoVisual}</strong></p>
-            <div style="display: flex; gap: 5px; margin-top: 10px;">${botonesHTML}</div>
+            <p style="font-size: 0.9em; margin: 5px 0;">Usos: ${p.usos}</p>
+            <p style="font-size: 0.9em; margin: 5px 0;"><strong>${estadoVisual}</strong></p>
+            ${botonesHTML}
         `;
         contenedor.appendChild(div);
     });
