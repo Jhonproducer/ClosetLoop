@@ -1,0 +1,73 @@
+:root {
+    --primary: #2a9d8f;
+    --danger: #e76f51;
+    --dark: #264653;
+    --light: #f4a261;
+}
+
+body {
+    font-family: 'Segoe UI', sans-serif;
+    background-color: var(--dark);
+    color: white;
+    margin: 0;
+    padding: 0;
+}
+
+.app-container { padding: 20px; max-width: 500px; margin: auto; }
+
+.card {
+    background: #ffffff22;
+    padding: 20px;
+    border-radius: 15px;
+    margin-bottom: 10px;
+    text-align: center;
+    border: 2px solid var(--primary);
+}
+
+.alert {
+    background: var(--danger);
+    padding: 10px;
+    border-radius: 8px;
+    text-align: center;
+    font-weight: bold;
+    margin-bottom: 15px;
+}
+
+.hidden { display: none; }
+
+.btn-confirmar {
+    background: var(--primary);
+    width: 100%;
+    padding: 15px;
+    border: none;
+    border-radius: 10px;
+    color: white;
+    font-weight: bold;
+    margin-top: 10px;
+}
+
+.fab {
+    position: fixed;
+    bottom: 20px;
+    right: 20px;
+    width: 60px;
+    height: 60px;
+    border-radius: 30px;
+    background: var(--light);
+    border: none;
+    font-size: 30px;
+    box-shadow: 0 4px 10px rgba(0,0,0,0.3);
+}
+
+/* Diseño del Modal */
+.modal {
+    position: fixed;
+    top: 0; left: 0; width: 100%; height: 100%;
+    background: rgba(0,0,0,0.8);
+    display: flex; justify-content: center; align-items: center;
+}
+.modal-content {
+    background: white; color: black;
+    padding: 30px; border-radius: 20px; width: 80%;
+}
+input, select { width: 100%; margin: 10px 0; padding: 10px; }

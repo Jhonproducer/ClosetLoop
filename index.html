@@ -1,0 +1,53 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Mi Closet Inteligente</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div class="app-container">
+        <header>
+            <h1>👕 Mi Closet</h1>
+            <div id="lavado-alert" class="alert hidden">⚠️ ¡Poca ropa! Hora de lavar</div>
+        </header>
+
+        <section class="outfit-sugerido">
+            <h2>Outfit para las 6:00 PM</h2>
+            <div class="display-outfit">
+                <div id="sugerencia-superior" class="card">Franela: ---</div>
+                <div id="sugerencia-inferior" class="card">Short: ---</div>
+            </div>
+            <button onclick="confirmarUso()" class="btn-confirmar">✅ Me lo puse</button>
+            <button onclick="marcarSemiSucio()" class="btn-repetir">♻️ Repetir (Semi-sucio)</button>
+        </section>
+
+        <section class="inventario">
+            <h3>Mi Ropa</h3>
+            <div class="tabs">
+                <button onclick="filtrar('superior')">Franelas</button>
+                <button onclick="filtrar('inferior')">Shorts</button>
+            </div>
+            <div id="lista-ropa" class="grid-ropa"></div>
+        </section>
+
+        <button class="fab" onclick="abrirModal()">+</button>
+
+        <div id="modal" class="modal hidden">
+            <div class="modal-content">
+                <h3>Nueva Prenda</h3>
+                <input type="text" id="nombre-prenda" placeholder="Ej: Franela Roja">
+                <select id="tipo-prenda">
+                    <option value="superior">Franela</option>
+                    <option value="inferior">Short / Pantalón</option>
+                </select>
+                <input type="file" id="foto-prenda" accept="image/*" capture="camera">
+                <button onclick="guardarPrenda()">Guardar</button>
+                <button onclick="cerrarModal()" class="btn-cancelar">Cerrar</button>
+            </div>
+        </div>
+    </div>
+    <script src="app.js"></script>
+</body>
+</html>
