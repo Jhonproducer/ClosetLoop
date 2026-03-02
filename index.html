@@ -1,61 +1,219 @@
 <!DOCTYPE html>
-<html lang="es">
+<html>
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Rotación de Ropa</title>
-    <link rel="stylesheet" href="style.css">
+<meta charset="UTF-8">
+<title>Closet Rotativo Inteligente</title>
+
+<style>
+body{
+  font-family: Arial;
+  background:#0f172a;
+  color:white;
+  text-align:center;
+}
+
+h1{margin-top:20px;}
+
+.container{
+  width:90%;
+  max-width:600px;
+  margin:auto;
+}
+
+input, select{
+  padding:8px;
+  margin:5px;
+}
+
+button{
+  padding:10px 15px;
+  margin:5px;
+  background:#22c55e;
+  border:none;
+  border-radius:6px;
+  color:white;
+  cursor:pointer;
+}
+
+button:hover{
+  background:#16a34a;
+}
+
+.card{
+  background:#1e293b;
+  padding:10px;
+  margin:10px 0;
+  border-radius:10px;
+}
+
+img{
+  width:80px;
+  border-radius:6px;
+}
+.alert{
+  background:#dc2626;
+  padding:10px;
+  border-radius:8px;
+  margin:10px 0;
+}
+.warning{
+  background:#f59e0b;
+  padding:10px;
+  border-radius:8px;
+  margin:10px 0;
+}
+</style>
 </head>
 <body>
-    <div class="app-container">
-        <header>
-            <h1>🔄 RotaRopa</h1>
-            <p id="estado-cesto" class="alerta-cesto">Cesto vacío</p>
-        </header>
 
-        <section class="panel-principal">
-            <h2>👕 Tienes puesto ahora:</h2>
-            <div class="outfit-display" id="outfit-actual">
-                </div>
-            
-            <div class="acciones-ducha">
-                <button onclick="meVoyABanar(false)" class="btn-ducha">🚿 Me voy a bañar (Cambiar todo)</button>
-                <button onclick="meVoyABanar(true)" class="btn-reciclar">♻️ El short aguanta (Cambiar solo franela)</button>
-            </div>
-        </section>
+<div class="container">
 
-        <section class="panel-sugerencia">
-            <h2>🔜 Próxima muda (La menos usada):</h2>
-            <div class="outfit-display" id="outfit-sugerido">
-                </div>
-        </section>
+<h1>Closet Inteligente</h1>
 
-        <section class="panel-inventario">
-            <div class="tabs">
-                <button onclick="verPestana('limpio')" id="tab-limpio" class="active">✨ Limpios</button>
-                <button onclick="verPestana('sucio')" id="tab-sucio">🧺 Cesto</button>
-            </div>
-            <div id="lista-ropa" class="grid-ropa"></div>
-        </section>
+<h2>Agregar Prenda</h2>
 
-        <button class="fab" onclick="abrirModal()">+</button>
+<input type="text" id="nombre" placeholder="Nombre">
+<select id="categoria">
+  <option value="franela">Franela</option>
+  <option value="short">Short</option>
+  <option value="pantalon">Pantalón</option>
+</select>
+<input type="file" id="imagen" accept="image/*">
+<br>
+<button onclick="agregarPrenda()">Agregar Prenda</button>
 
-        <div id="modal" class="modal hidden">
-            <div class="modal-content">
-                <h3>Añadir Prenda</h3>
-                <input type="text" id="nombre-prenda" placeholder="Ej: Franela Azul" maxlength="25">
-                <select id="tipo-prenda">
-                    <option value="superior">Franela</option>
-                    <option value="inferior">Short / Pantalón</option>
-                </select>
-                <input type="file" id="foto-prenda" accept="image/*" capture="camera">
-                <button onclick="guardarPrenda()" class="btn-guardar">Guardar</button>
-                <button onclick="cerrarModal()" class="btn-cerrar">Cancelar</button>
-            </div>
-        </div>
-    </div>
+<h2>Outfit Recomendado</h2>
+<div id="alerta"></div>
+<div id="outfit"></div>
+<button onclick="generarOutfit()">¿Qué me pongo hoy?</button>
 
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/localforage/1.10.0/localforage.min.js"></script>
-    <script src="app.js"></script>
+<h2>Acciones</h2>
+<button onclick="terminarUso()">Terminé de usar</button>
+<button onclick="lavar()">Ya Lavé 🧺</button>
+
+<h2>Estado General</h2>
+<div id="estado"></div>
+
+</div>
+
+<script>
+
+let prendas = JSON.parse(localStorage.getItem("prendas")) || [];
+
+function guardar(){
+  localStorage.setItem("prendas", JSON.stringify(prendas));
+}
+
+function agregarPrenda(){
+  const nombre = document.getElementById("nombre").value;
+  const categoria = document.getElementById("categoria").value;
+  const file = document.getElementById("imagen").files[0];
+
+  if(!nombre || !file){
+    alert("Completa nombre e imagen");
+    return;
+  }
+
+  const reader = new FileReader();
+  reader.onload = function(e){
+    prendas.push({
+      nombre,
+      categoria,
+      imagen: e.target.result,
+      estado:"limpia",
+      usos:0,
+      ultimaVez:null
+    });
+
+    guardar();
+    alert("Prenda agregada");
+    actualizarEstado();
+  };
+
+  reader.readAsDataURL(file);
+}
+
+function generarOutfit(){
+  const limpias = prendas.filter(p=>p.estado==="limpia");
+
+  const superiores = limpias.filter(p=>p.categoria==="franela")
+    .sort((a,b)=>a.usos-b.usos);
+
+  const inferiores = limpias.filter(p=>p.categoria!=="franela")
+    .sort((a,b)=>a.usos-b.usos);
+
+  if(superiores.length===0 || inferiores.length===0){
+    document.getElementById("outfit").innerHTML="";
+    document.getElementById("alerta").innerHTML=
+      "<div class='alert'>⚠️ No hay outfit completo. Debes lavar.</div>";
+    return;
+  }
+
+  if(superiores.length===1 || inferiores.length===1){
+    document.getElementById("alerta").innerHTML=
+      "<div class='warning'>⚠️ Te queda solo 1 outfit disponible.</div>";
+  } else {
+    document.getElementById("alerta").innerHTML="";
+  }
+
+  const arriba = superiores[0];
+  const abajo = inferiores[0];
+
+  arriba.estado="usando";
+  abajo.estado="usando";
+
+  document.getElementById("outfit").innerHTML=
+    `<div class='card'>
+      <p>${arriba.nombre}</p>
+      <img src="${arriba.imagen}">
+      <p>${abajo.nombre}</p>
+      <img src="${abajo.imagen}">
+    </div>`;
+
+  guardar();
+  actualizarEstado();
+}
+
+function terminarUso(){
+  prendas.forEach(p=>{
+    if(p.estado==="usando"){
+      p.estado="cesto";
+      p.usos++;
+      p.ultimaVez=new Date();
+    }
+  });
+
+  guardar();
+  actualizarEstado();
+  alert("Outfit enviado al cesto");
+}
+
+function lavar(){
+  prendas.forEach(p=>{
+    if(p.estado==="cesto"){
+      p.estado="limpia";
+    }
+  });
+
+  guardar();
+  actualizarEstado();
+  alert("Ciclo reiniciado");
+}
+
+function actualizarEstado(){
+  const limpias=prendas.filter(p=>p.estado==="limpia").length;
+  const usando=prendas.filter(p=>p.estado==="usando").length;
+  const cesto=prendas.filter(p=>p.estado==="cesto").length;
+
+  document.getElementById("estado").innerHTML=
+    `Limpias: ${limpias}<br>
+     En uso: ${usando}<br>
+     En cesto: ${cesto}`;
+}
+
+actualizarEstado();
+
+</script>
+
 </body>
 </html>
