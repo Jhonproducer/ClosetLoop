@@ -2,32 +2,31 @@
 <html lang="es">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Mi Closet Inteligente</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>ClosetLoop</title>
     <link rel="stylesheet" href="style.css">
 </head>
 <body>
     <div class="app-container">
         <header>
-            <h1>👕 Mi Closet</h1>
-            <div id="lavado-alert" class="alert hidden">⚠️ ¡Poca ropa! Hora de lavar</div>
+            <h1>👕 ClosetLoop</h1>
+            <div id="lavado-alert" class="alert hidden">⚠️ ¡Alerta! Te queda muy poca ropa limpia.</div>
         </header>
 
         <section class="outfit-sugerido">
-            <h2>Outfit para las 6:00 PM</h2>
+            <h2 style="font-size: 1.2em; margin-bottom: 10px;">Outfit Sugerido</h2>
             <div class="display-outfit">
-                <div id="sugerencia-superior" class="card">Franela: ---</div>
-                <div id="sugerencia-inferior" class="card">Short: ---</div>
+                <div id="sugerencia-superior" class="card"></div>
+                <div id="sugerencia-inferior" class="card"></div>
             </div>
-            <button onclick="confirmarUso()" class="btn-confirmar">✅ Me lo puse</button>
-            <button onclick="marcarSemiSucio()" class="btn-repetir">♻️ Repetir (Semi-sucio)</button>
+            <button onclick="confirmarUso()" class="btn-confirmar">✅ Me lo puse hoy</button>
+            <button onclick="marcarSemiSucio()" class="btn-repetir">♻️ Repetir pantalón mañana</button>
         </section>
 
-        <section class="inventario">
-            <h3>Mi Ropa</h3>
+        <section class="inventario" style="margin-top: 30px;">
             <div class="tabs">
-                <button onclick="filtrar('superior')">Franelas</button>
-                <button onclick="filtrar('inferior')">Shorts</button>
+                <button id="tab-sup" class="active" onclick="filtrar('superior')">Franelas</button>
+                <button id="tab-inf" onclick="filtrar('inferior')">Shorts / Pant.</button>
             </div>
             <div id="lista-ropa" class="grid-ropa"></div>
         </section>
@@ -36,14 +35,14 @@
 
         <div id="modal" class="modal hidden">
             <div class="modal-content">
-                <h3>Nueva Prenda</h3>
-                <input type="text" id="nombre-prenda" placeholder="Ej: Gris Oxford (Básquet)">
+                <h3 style="margin-top:0; color:#fff;">Nueva Prenda</h3>
+                <input type="text" id="nombre-prenda" placeholder="Ej: Franela Nike Negra" maxlength="30">
                 <select id="tipo-prenda">
-                    <option value="superior">Franela</option>
-                    <option value="inferior">Short / Pantalón</option>
+                    <option value="superior">Es una Franela</option>
+                    <option value="inferior">Es un Short/Pantalón</option>
                 </select>
                 <input type="file" id="foto-prenda" accept="image/*" capture="camera">
-                <button onclick="guardarPrenda()" class="btn-guardar">💾 Guardar Prenda</button>
+                <button onclick="guardarPrenda()" class="btn-guardar">Guardar Prenda</button>
                 <button onclick="cerrarModal()" class="btn-cerrar">Cancelar</button>
             </div>
         </div>
