@@ -2,22 +2,30 @@
 <html>
 <head>
 <meta charset="UTF-8">
-<title>Closet Rotativo Inteligente</title>
+<title>RotaRopa</title>
 
 <style>
 body{
-  font-family: Arial;
-  background:#0f172a;
+  background:#0d1117;
+  font-family:Arial;
   color:white;
   text-align:center;
 }
 
-h1{margin-top:20px;}
-
 .container{
-  width:90%;
-  max-width:600px;
+  max-width:700px;
   margin:auto;
+}
+
+h1{
+  margin-top:20px;
+}
+
+.section{
+  background:#161b22;
+  padding:20px;
+  margin:20px 0;
+  border-radius:15px;
 }
 
 input, select{
@@ -28,39 +36,38 @@ input, select{
 button{
   padding:10px 15px;
   margin:5px;
-  background:#22c55e;
   border:none;
-  border-radius:6px;
-  color:white;
+  border-radius:8px;
   cursor:pointer;
+  font-weight:bold;
 }
 
-button:hover{
-  background:#16a34a;
+.green{
+  background:#22c55e;
+  color:white;
+}
+
+.red{
+  background:#dc2626;
+  color:white;
+}
+
+.blue{
+  background:#3b82f6;
+  color:white;
 }
 
 .card{
-  background:#1e293b;
+  background:#1f2937;
   padding:10px;
-  margin:10px 0;
+  margin:10px;
   border-radius:10px;
+  display:inline-block;
 }
 
 img{
-  width:80px;
-  border-radius:6px;
-}
-.alert{
-  background:#dc2626;
-  padding:10px;
+  width:100px;
   border-radius:8px;
-  margin:10px 0;
-}
-.warning{
-  background:#f59e0b;
-  padding:10px;
-  border-radius:8px;
-  margin:10px 0;
 }
 </style>
 </head>
@@ -68,31 +75,39 @@ img{
 
 <div class="container">
 
-<h1>Closet Inteligente</h1>
+<h1>🔄 RotaRopa</h1>
 
+<div class="section">
 <h2>Agregar Prenda</h2>
 
-<input type="text" id="nombre" placeholder="Nombre">
+<input type="text" id="nombre" placeholder="Nombre de la prenda">
 <select id="categoria">
-  <option value="franela">Franela</option>
-  <option value="short">Short</option>
-  <option value="pantalon">Pantalón</option>
+<option value="franela">Franela</option>
+<option value="short">Short</option>
+<option value="pantalon">Pantalón</option>
 </select>
 <input type="file" id="imagen" accept="image/*">
 <br>
-<button onclick="agregarPrenda()">Agregar Prenda</button>
+<button class="blue" onclick="agregarPrenda()">Agregar</button>
+</div>
 
-<h2>Outfit Recomendado</h2>
-<div id="alerta"></div>
-<div id="outfit"></div>
-<button onclick="generarOutfit()">¿Qué me pongo hoy?</button>
+<div class="section">
+<h2>Closet</h2>
+<div id="listaPrendas"></div>
+</div>
 
-<h2>Acciones</h2>
-<button onclick="terminarUso()">Terminé de usar</button>
-<button onclick="lavar()">Ya Lavé 🧺</button>
+<div class="section">
+<h2>Outfit Actual</h2>
+<div id="outfitActual">Nada puesto</div>
+<button class="green" onclick="generarOutfit()">Generar Outfit</button>
+<button class="red" onclick="terminarUso()">Enviar al Cesto</button>
+<button class="blue" onclick="lavar()">Ya Lavé</button>
+</div>
 
-<h2>Estado General</h2>
+<div class="section">
+<h2>Estado</h2>
 <div id="estado"></div>
+</div>
 
 </div>
 
@@ -101,116 +116,142 @@ img{
 let prendas = JSON.parse(localStorage.getItem("prendas")) || [];
 
 function guardar(){
-  localStorage.setItem("prendas", JSON.stringify(prendas));
+localStorage.setItem("prendas", JSON.stringify(prendas));
 }
 
 function agregarPrenda(){
-  const nombre = document.getElementById("nombre").value;
-  const categoria = document.getElementById("categoria").value;
-  const file = document.getElementById("imagen").files[0];
+const nombre = document.getElementById("nombre").value;
+const categoria = document.getElementById("categoria").value;
+const file = document.getElementById("imagen").files[0];
 
-  if(!nombre || !file){
-    alert("Completa nombre e imagen");
-    return;
-  }
+if(!nombre || !file){
+alert("Falta nombre o imagen");
+return;
+}
 
-  const reader = new FileReader();
-  reader.onload = function(e){
-    prendas.push({
-      nombre,
-      categoria,
-      imagen: e.target.result,
-      estado:"limpia",
-      usos:0,
-      ultimaVez:null
-    });
+const reader = new FileReader();
+reader.onload = function(e){
 
-    guardar();
-    alert("Prenda agregada");
-    actualizarEstado();
-  };
+prendas.push({
+nombre:nombre,
+categoria:categoria,
+imagen:e.target.result,
+estado:"limpia",
+usos:0
+});
 
-  reader.readAsDataURL(file);
+guardar();
+mostrarPrendas();
+actualizarEstado();
+alert("Prenda agregada correctamente");
+
+};
+
+reader.readAsDataURL(file);
+}
+
+function mostrarPrendas(){
+let html="";
+prendas.forEach((p,i)=>{
+html+=`
+<div class="card">
+<img src="${p.imagen}">
+<p>${p.nombre}</p>
+<p>${p.categoria}</p>
+<p>Estado: ${p.estado}</p>
+<p>Usos: ${p.usos}</p>
+</div>
+`;
+});
+document.getElementById("listaPrendas").innerHTML=html;
 }
 
 function generarOutfit(){
-  const limpias = prendas.filter(p=>p.estado==="limpia");
 
-  const superiores = limpias.filter(p=>p.categoria==="franela")
-    .sort((a,b)=>a.usos-b.usos);
+const limpias = prendas.filter(p=>p.estado==="limpia");
 
-  const inferiores = limpias.filter(p=>p.categoria!=="franela")
-    .sort((a,b)=>a.usos-b.usos);
+const arriba = limpias
+.filter(p=>p.categoria==="franela")
+.sort((a,b)=>a.usos-b.usos)[0];
 
-  if(superiores.length===0 || inferiores.length===0){
-    document.getElementById("outfit").innerHTML="";
-    document.getElementById("alerta").innerHTML=
-      "<div class='alert'>⚠️ No hay outfit completo. Debes lavar.</div>";
-    return;
-  }
+const abajo = limpias
+.filter(p=>p.categoria!=="franela")
+.sort((a,b)=>a.usos-b.usos)[0];
 
-  if(superiores.length===1 || inferiores.length===1){
-    document.getElementById("alerta").innerHTML=
-      "<div class='warning'>⚠️ Te queda solo 1 outfit disponible.</div>";
-  } else {
-    document.getElementById("alerta").innerHTML="";
-  }
+if(!arriba || !abajo){
+document.getElementById("outfitActual").innerHTML="⚠️ No hay outfit completo. Debes lavar.";
+return;
+}
 
-  const arriba = superiores[0];
-  const abajo = inferiores[0];
+arriba.estado="usando";
+abajo.estado="usando";
 
-  arriba.estado="usando";
-  abajo.estado="usando";
+guardar();
+mostrarPrendas();
+actualizarEstado();
 
-  document.getElementById("outfit").innerHTML=
-    `<div class='card'>
-      <p>${arriba.nombre}</p>
-      <img src="${arriba.imagen}">
-      <p>${abajo.nombre}</p>
-      <img src="${abajo.imagen}">
-    </div>`;
+document.getElementById("outfitActual").innerHTML=`
+<div class="card">
+<img src="${arriba.imagen}">
+<p>${arriba.nombre}</p>
+</div>
+<div class="card">
+<img src="${abajo.imagen}">
+<p>${abajo.nombre}</p>
+</div>
+`;
 
-  guardar();
-  actualizarEstado();
 }
 
 function terminarUso(){
-  prendas.forEach(p=>{
-    if(p.estado==="usando"){
-      p.estado="cesto";
-      p.usos++;
-      p.ultimaVez=new Date();
-    }
-  });
 
-  guardar();
-  actualizarEstado();
-  alert("Outfit enviado al cesto");
+prendas.forEach(p=>{
+if(p.estado==="usando"){
+p.estado="cesto";
+p.usos++;
+}
+});
+
+guardar();
+mostrarPrendas();
+actualizarEstado();
+
+document.getElementById("outfitActual").innerHTML="Nada puesto";
+
 }
 
 function lavar(){
-  prendas.forEach(p=>{
-    if(p.estado==="cesto"){
-      p.estado="limpia";
-    }
-  });
 
-  guardar();
-  actualizarEstado();
-  alert("Ciclo reiniciado");
+prendas.forEach(p=>{
+if(p.estado==="cesto"){
+p.estado="limpia";
+}
+});
+
+guardar();
+mostrarPrendas();
+actualizarEstado();
+
+alert("Ciclo reiniciado");
+
 }
 
 function actualizarEstado(){
-  const limpias=prendas.filter(p=>p.estado==="limpia").length;
-  const usando=prendas.filter(p=>p.estado==="usando").length;
-  const cesto=prendas.filter(p=>p.estado==="cesto").length;
 
-  document.getElementById("estado").innerHTML=
-    `Limpias: ${limpias}<br>
-     En uso: ${usando}<br>
-     En cesto: ${cesto}`;
+const limpias=prendas.filter(p=>p.estado==="limpia").length;
+const usando=prendas.filter(p=>p.estado==="usando").length;
+const cesto=prendas.filter(p=>p.estado==="cesto").length;
+
+document.getElementById("estado").innerHTML=
+`
+Limpias: ${limpias}<br>
+Usando: ${usando}<br>
+En Cesto: ${cesto}
+`;
+
 }
 
+mostrarPrendas();
 actualizarEstado();
 
 </script>
