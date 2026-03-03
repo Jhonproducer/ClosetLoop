@@ -1,260 +1,109 @@
 <!DOCTYPE html>
-<html>
+<html lang="es">
 <head>
-<meta charset="UTF-8">
-<title>RotaRopa</title>
-
-<style>
-body{
-  background:#0d1117;
-  font-family:Arial;
-  color:white;
-  text-align:center;
-}
-
-.container{
-  max-width:700px;
-  margin:auto;
-}
-
-h1{
-  margin-top:20px;
-}
-
-.section{
-  background:#161b22;
-  padding:20px;
-  margin:20px 0;
-  border-radius:15px;
-}
-
-input, select{
-  padding:8px;
-  margin:5px;
-}
-
-button{
-  padding:10px 15px;
-  margin:5px;
-  border:none;
-  border-radius:8px;
-  cursor:pointer;
-  font-weight:bold;
-}
-
-.green{
-  background:#22c55e;
-  color:white;
-}
-
-.red{
-  background:#dc2626;
-  color:white;
-}
-
-.blue{
-  background:#3b82f6;
-  color:white;
-}
-
-.card{
-  background:#1f2937;
-  padding:10px;
-  margin:10px;
-  border-radius:10px;
-  display:inline-block;
-}
-
-img{
-  width:100px;
-  border-radius:8px;
-}
-</style>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>My Daily Outfit 📱👕</title>
+    <link rel="stylesheet" href="style.css">
+    <meta name="theme-color" content="#121212">
 </head>
 <body>
 
-<div class="container">
+    <!-- Container Central Móvil (Optimizado) -->
+    <div id="app-container">
+        <!-- Notificación de Urgencia Laundry. (Oculto por defecto) -->
+        <div id="laundry-alert" class="hidden">
+            ⚠️ ¡Toca lavar mañana temprano! Te quedas sin ropa para las 6:00 PM.
+        </div>
 
-<h1>🔄 RotaRopa</h1>
+        <!-- 1. Pestaña de Dashboard -->
+        <main id="tab-dashboard" class="view active">
+            <header>
+                <h1>Hola. Tu ropa para hoy 📆</h1>
+                <p id="dashboard-clock">00:00:00</p>
+            </header>
 
-<div class="section">
-<h2>Agregar Prenda</h2>
+            <div class="current-outfit">
+                <div class="empty-state hidden" id="prompt-elegir-ropa">
+                    <h3>¡Tu outfit de ayer ya fue a lavar!</h3>
+                    <p>Necesitas escoger qué ponerte hasta mañana a las 6:00 PM.</p>
+                </div>
+                
+                <div class="outfit-display" id="outfit-display">
+                    <div class="clothing-slot">
+                        <span class="badge badge-cyan">Franela Actual</span>
+                        <div id="display-franela" class="slot-image">👚</div>
+                    </div>
+                    <div class="clothing-slot">
+                        <span class="badge badge-cyan">Short Actual</span>
+                        <div id="display-short" class="slot-image">🩳</div>
+                    </div>
+                </div>
+            </div>
 
-<input type="text" id="nombre" placeholder="Nombre de la prenda">
-<select id="categoria">
-<option value="franela">Franela</option>
-<option value="short">Short</option>
-<option value="pantalon">Pantalón</option>
-</select>
-<input type="file" id="imagen" accept="image/*">
-<br>
-<button class="blue" onclick="agregarPrenda()">Agregar</button>
-</div>
+            <button id="btn-suggest" class="neon-btn primary-btn btn-massive">
+                ✨ SUGERIR OUTFIT ✨
+            </button>
+        </main>
 
-<div class="section">
-<h2>Closet</h2>
-<div id="listaPrendas"></div>
-</div>
+        <!-- 2. Pestaña de Inventario/Armario -->
+        <main id="tab-armario" class="view hidden">
+            <header>
+                <h1>Tu Inventario 👕🩳</h1>
+            </header>
+            
+            <div class="upload-section glass-card">
+                <h3>Añadir Prenda Nueva</h3>
+                <div class="upload-controls">
+                    <label for="img-upload" class="neon-btn success-btn">Tomar Foto 📸</label>
+                    <!-- Captura forzada usando API web o selección base móvil -->
+                    <input type="file" id="img-upload" accept="image/*" class="hidden">
+                    <select id="type-select">
+                        <option value="franela">Es una Franela</option>
+                        <option value="short">Es un Short</option>
+                    </select>
+                </div>
+            </div>
 
-<div class="section">
-<h2>Outfit Actual</h2>
-<div id="outfitActual">Nada puesto</div>
-<button class="green" onclick="generarOutfit()">Generar Outfit</button>
-<button class="red" onclick="terminarUso()">Enviar al Cesto</button>
-<button class="blue" onclick="lavar()">Ya Lavé</button>
-</div>
+            <!-- Listado tipo grid interactivo -->
+            <div class="grid-layout" id="clothes-grid">
+               <!-- Inyectado vía JS -->
+            </div>
+        </main>
 
-<div class="section">
-<h2>Estado</h2>
-<div id="estado"></div>
-</div>
+        <!-- 3. Pestaña de Lavandería -->
+        <main id="tab-laundry" class="view hidden">
+            <header>
+                <h1>Lavandería 🧺</h1>
+            </header>
 
-</div>
+            <div class="basket-status glass-card text-center">
+                <h3>Cesto de Ropa Sucia</h3>
+                <p>Mudas sucias esperando lavado</p>
+                <button id="btn-wash-all" class="neon-btn info-btn btn-massive" style="margin-top: 20px;">
+                    💦 LAVAR TODO EL CESTO 💦
+                </button>
+            </div>
 
-<script>
+            <div class="grid-layout" id="laundry-grid">
+                 <!-- Inyectado vía JS (Sólo Ropa en estado Sucio) -->
+            </div>
+        </main>
 
-let prendas = JSON.parse(localStorage.getItem("prendas")) || [];
+        <!-- Navbar PWA Fixed At Bottom -->
+        <nav class="bottom-nav">
+            <button class="nav-item active" data-target="tab-dashboard">
+                <span class="nav-icon">📅</span> Hoy
+            </button>
+            <button class="nav-item" data-target="tab-armario">
+                <span class="nav-icon">👕</span> Armario
+            </button>
+            <button class="nav-item" data-target="tab-laundry">
+                <span class="nav-icon">🧺</span> Lavar
+            </button>
+        </nav>
+    </div>
 
-function guardar(){
-localStorage.setItem("prendas", JSON.stringify(prendas));
-}
-
-function agregarPrenda(){
-const nombre = document.getElementById("nombre").value;
-const categoria = document.getElementById("categoria").value;
-const file = document.getElementById("imagen").files[0];
-
-if(!nombre || !file){
-alert("Falta nombre o imagen");
-return;
-}
-
-const reader = new FileReader();
-reader.onload = function(e){
-
-prendas.push({
-nombre:nombre,
-categoria:categoria,
-imagen:e.target.result,
-estado:"limpia",
-usos:0
-});
-
-guardar();
-mostrarPrendas();
-actualizarEstado();
-alert("Prenda agregada correctamente");
-
-};
-
-reader.readAsDataURL(file);
-}
-
-function mostrarPrendas(){
-let html="";
-prendas.forEach((p,i)=>{
-html+=`
-<div class="card">
-<img src="${p.imagen}">
-<p>${p.nombre}</p>
-<p>${p.categoria}</p>
-<p>Estado: ${p.estado}</p>
-<p>Usos: ${p.usos}</p>
-</div>
-`;
-});
-document.getElementById("listaPrendas").innerHTML=html;
-}
-
-function generarOutfit(){
-
-const limpias = prendas.filter(p=>p.estado==="limpia");
-
-const arriba = limpias
-.filter(p=>p.categoria==="franela")
-.sort((a,b)=>a.usos-b.usos)[0];
-
-const abajo = limpias
-.filter(p=>p.categoria!=="franela")
-.sort((a,b)=>a.usos-b.usos)[0];
-
-if(!arriba || !abajo){
-document.getElementById("outfitActual").innerHTML="⚠️ No hay outfit completo. Debes lavar.";
-return;
-}
-
-arriba.estado="usando";
-abajo.estado="usando";
-
-guardar();
-mostrarPrendas();
-actualizarEstado();
-
-document.getElementById("outfitActual").innerHTML=`
-<div class="card">
-<img src="${arriba.imagen}">
-<p>${arriba.nombre}</p>
-</div>
-<div class="card">
-<img src="${abajo.imagen}">
-<p>${abajo.nombre}</p>
-</div>
-`;
-
-}
-
-function terminarUso(){
-
-prendas.forEach(p=>{
-if(p.estado==="usando"){
-p.estado="cesto";
-p.usos++;
-}
-});
-
-guardar();
-mostrarPrendas();
-actualizarEstado();
-
-document.getElementById("outfitActual").innerHTML="Nada puesto";
-
-}
-
-function lavar(){
-
-prendas.forEach(p=>{
-if(p.estado==="cesto"){
-p.estado="limpia";
-}
-});
-
-guardar();
-mostrarPrendas();
-actualizarEstado();
-
-alert("Ciclo reiniciado");
-
-}
-
-function actualizarEstado(){
-
-const limpias=prendas.filter(p=>p.estado==="limpia").length;
-const usando=prendas.filter(p=>p.estado==="usando").length;
-const cesto=prendas.filter(p=>p.estado==="cesto").length;
-
-document.getElementById("estado").innerHTML=
-`
-Limpias: ${limpias}<br>
-Usando: ${usando}<br>
-En Cesto: ${cesto}
-`;
-
-}
-
-mostrarPrendas();
-actualizarEstado();
-
-</script>
-
+    <script src="app.js"></script>
 </body>
 </html>
