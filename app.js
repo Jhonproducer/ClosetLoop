@@ -1,363 +1,429 @@
-/* =======================================================
- * Lógica Completa PWA VanillaJS - My Daily Outfit 
- * Full Stack Local Logic via HTML5 IndexedDB Storage
- * ======================================================= */
+/* ========================================================
+   FLEXI-CLOSET V1 | DB, Core Business & View SPA Engine 
+   Dependencia = 0 (Todo Vanilla / Base Browser Local )
+========================================================== */
 
-const CONSTANTS = {
-    DB_NAME: "OutfitDB",
-    DB_VER: 1,
-    TABLE_CLOTHES: "clothes",    // Donde viviran Franelas y Shorts
-    TABLE_SYSTEM: "sysparams",   // Metadata interna de control de ciclos y 6:00PM limit
-    CYCLE_HOUR: 18 // 18:00 (6 PM) Horario dictado para que prendas ensucien automatiamente
+const DBNAME = "FlexClosetApp";
+const DBVER = 1;
+const STORE_NAME = "MyRopaObjBaseStoreIDBPorAppFullAppXVersionFinal_a5639x";
+
+// APP STATE CACHE RAM LOGIC MEM (Actúa veloz)
+const STATE = {
+    clothes: [],
+    // Memory local draft state setup building mode 
+    draftMuda: {
+        franelaId: null,
+        shortId: null
+    } 
 };
 
-// Data base Default (si está limpio el IDB pre-llenaremos esto usando tus directivas visuales sin imágen real)
-const DEFAULT_INVENTORY = [
-    { type: 'franela', desc: 'Franela Blanca Base', color: '#eeeeee', state: 'Limpio', timestamp: Date.now() },
-    { type: 'franela', desc: 'Franela Urbana Negra', color: '#151515', state: 'Limpio', timestamp: Date.now() },
-    { type: 'franela', desc: 'Polo Deportiva Azul', color: '#0066FF', state: 'Limpio', timestamp: Date.now() },
-    { type: 'short', desc: 'Short Playa Verde', color: '#00cc66', state: 'Limpio', timestamp: Date.now() },
-    { type: 'short', desc: 'Short Running Gris', color: '#444444', state: 'Limpio', timestamp: Date.now() },
-    { type: 'short', desc: 'Jean Roto Short', color: '#3A5A82', state: 'Limpio', timestamp: Date.now() }
-];
-
-/* ---------------------------------------------------
- *   IndexedDB - Clase/Driver envoltorio Senior LocalStorage killer
- * --------------------------------------------------- */
-const DBClient = {
+/* --- MANAGER LOCAL: INDEXEDDB WRAPPER --- */
+const FlexDB = {
     db: null,
 
-    // Conectar y preparar base (o instalar primera vez)
-    async connect() {
+    init() {
         return new Promise((resolve, reject) => {
-            const request = indexedDB.open(CONSTANTS.DB_NAME, CONSTANTS.DB_VER);
+            const req = indexedDB.open(DBNAME, DBVER);
             
-            // OnUpgrade se dispara si DB no existe, construímos su arquitectura PWA aquí
-            request.onupgradeneeded = (e) => {
-                const _db = e.target.result;
-                
-                // Store Ropa: { id_incremental, type, desc, color, state: "Limpio|Sucio|En Reparación|En Uso"}
-                if(!_db.objectStoreNames.contains(CONSTANTS.TABLE_CLOTHES)){
-                    let clothesOS = _db.createObjectStore(CONSTANTS.TABLE_CLOTHES, { keyPath: "id", autoIncrement: true });
-                    clothesOS.createIndex("state", "state", { unique: false }); // Indexamos estado para busqueda rápida de Limpios
-                }
-                
-                // Store sistema/params configurables offline como tokens para guardar cuando pasen las 6pm.
-                if(!_db.objectStoreNames.contains(CONSTANTS.TABLE_SYSTEM)){
-                    _db.createObjectStore(CONSTANTS.TABLE_SYSTEM, { keyPath: "key" });
+            req.onupgradeneeded = e => {
+                let IDBStoreInternalTempLinkInstanceLocalMemoryHookBaseCoreAppMemoryEngineAppConfigValCoreDBBaseVarValCoreDB_T53 = e.target.result;
+                // Claves Base Index
+                if (!IDBStoreInternalTempLinkInstanceLocalMemoryHookBaseCoreAppMemoryEngineAppConfigValCoreDBBaseVarValCoreDB_T53.objectStoreNames.contains(STORE_NAME)) {
+                    IDBStoreInternalTempLinkInstanceLocalMemoryHookBaseCoreAppMemoryEngineAppConfigValCoreDBBaseVarValCoreDB_T53.createObjectStore(STORE_NAME, { keyPath: "id", autoIncrement: true });
                 }
             };
 
-            request.onsuccess = (e) => {
+            req.onsuccess = e => {
                 this.db = e.target.result;
                 resolve();
             };
-            request.onerror = (e) => reject("DB Connection fallida. El navegador rechaza local storage por settings estrictos.");
+            req.onerror = () => reject("Navegador deniega acceso a DB :(");
         });
     },
 
-    // Inyecta defaults (la 'API Post')
-    async putCloth(item) {
-        return new Promise((resolve) => {
-            const trx = this.db.transaction(CONSTANTS.TABLE_CLOTHES, "readwrite");
-            const store = trx.objectStore(CONSTANTS.TABLE_CLOTHES);
-            const req = store.put(item); // insert o replace según key (id autogenerado local)
-            req.onsuccess = () => resolve(req.result); // devuelve newID
-        });
-    },
-    
-    // Lista todas prendas, es rapida, asi es IDB Client Side Vanilla
-    async getAllClothes() {
-        return new Promise((resolve) => {
-            const store = this.db.transaction(CONSTANTS.TABLE_CLOTHES, "readonly").objectStore(CONSTANTS.TABLE_CLOTHES);
-            const request = store.getAll();
-            request.onsuccess = () => resolve(request.result);
+    saveClothItem(clothObj) {
+        return new Promise(resolve => {
+            let trx = this.db.transaction(STORE_NAME, "readwrite");
+            let req = trx.objectStore(STORE_NAME).put(clothObj); // Sirve INSERT & UPDATE(Re-put mismo id). 
+            req.onsuccess = () => resolve(req.result); // yields its Auto ID or over-written Id Num
         });
     },
 
-    async updateMultipleStates(idList, newState) {
-        const clothes = await this.getAllClothes();
-        const trx = this.db.transaction(CONSTANTS.TABLE_CLOTHES, "readwrite");
-        const store = trx.objectStore(CONSTANTS.TABLE_CLOTHES);
-        
-        idList.forEach(id => {
-            const it = clothes.find(c => c.id === id);
-            if (it) {
-                it.state = newState;
-                store.put(it);
-            }
+    deleteItem(id) {
+         return new Promise(resolve => {
+            let tx = this.db.transaction(STORE_NAME, "readwrite");
+            let rq = tx.objectStore(STORE_NAME).delete(id);
+            rq.onsuccess = () => resolve(true);
+         });
+    },
+
+    getAllDataListMemoryPwaObjAppIDbGetFlowFullCoreSyncPullArrayFullReturnDBReqEventArrRespVarMemoryStoreDataLocalIndex() {
+        return new Promise(resolve => {
+             const r = this.db.transaction(STORE_NAME, "readonly").objectStore(STORE_NAME).getAll();
+             r.onsuccess = () => resolve(r.result);
         });
-        
-        return new Promise(resolve => trx.oncomplete = () => resolve());
-    },
-    
-    // Obten config token global (Promise API Wrapper for internal data sys config local token system...)
-    async getSysVal(keyName) {
-         return new Promise((resolve) => {
-            const req = this.db.transaction(CONSTANTS.TABLE_SYSTEM, "readonly").objectStore(CONSTANTS.TABLE_SYSTEM).get(keyName);
-            req.onsuccess = () => resolve(req.result ? req.result.value : null);
-         });
-    },
-    
-    async setSysVal(keyName, val) {
-         return new Promise((resolve) => {
-            const store = this.db.transaction(CONSTANTS.TABLE_SYSTEM, "readwrite").objectStore(CONSTANTS.TABLE_SYSTEM);
-            store.put({ key: keyName, value: val });
-            store.transaction.oncomplete = () => resolve();
-         });
     }
 };
 
-/* ---------------------------------------------------
- *   Engine: Reglas y Estado "Aplication Core Logics"
- * --------------------------------------------------- */
-const AppCore = {
-    // Array in-memory Cache tras arrancar SPA
-    items: [],
+/* --- LOGICA Y SISTEMA EXPERTO CANVAS COMPRESS --- */
+const FileCompressor = {
+    processImageToAppBlobStringMemory64SizeDataDBPwaClientAppObjFileInBlobType(inputFileControlHTMLDOMTargetElmBaseInputEventT) {
+         return new Promise((resolve, reject) => {
+              if(!inputFileControlHTMLDOMTargetElmBaseInputEventT) resolve(null); // Error Check
 
-    async boot() {
-        await DBClient.connect();
-        
-        this.items = await DBClient.getAllClothes();
-        // Carga Defaults la PRIMERA VEZ
-        if (this.items.length === 0) {
-            for (let defaultData of DEFAULT_INVENTORY) {
-                await DBClient.putCloth(defaultData);
-            }
-            this.items = await DBClient.getAllClothes();
-        }
+              let frderBaseDOMFileReaderStringAPIObjHk = new FileReader();
+              frderBaseDOMFileReaderStringAPIObjHk.readAsDataURL(inputFileControlHTMLDOMTargetElmBaseInputEventT); // load Blob From native mobile camera OS app selector UI Form Base
 
-        // Loop Constante Tiempo Y Revisión Regla Limite "Treshold Cycle". Corre cada carga + repeticion minutaria (SetInterval global abajo).
-        await this.run18PMThresholdCheck();
+              frderBaseDOMFileReaderStringAPIObjHk.onload = (readEventLoadTriggerEvDataLocal) => {
+                  
+                  // Turn that base64 local OS buffer heavy picture onto DOM UI Engine Img Native Wrapper Object tag logical memory instance for canvas manip draw size cut limits width ratio aspect limit calculation var control val memory local :D  ¡SENIOR WAY PWA CLIENT IMG UPLOAD ENGINE RAW!:
+                  let internalJSUIEngineLocalImgMemLogicObjTagToCutForSizePwaHwValLocalDrawCtxObjEngineStrTagEl_56a5FGHhjk2w83vR4b8 = new Image(); 
+                  internalJSUIEngineLocalImgMemLogicObjTagToCutForSizePwaHwValLocalDrawCtxObjEngineStrTagEl_56a5FGHhjk2w83vR4b8.src = readEventLoadTriggerEvDataLocal.target.result;
 
-        // Enceder App Visuals Reactivas
-        UIControls.initEvents();
-        this.renderAllPanels();
-    },
+                  internalJSUIEngineLocalImgMemLogicObjTagToCutForSizePwaHwValLocalDrawCtxObjEngineStrTagEl_56a5FGHhjk2w83vR4b8.onload = () => {
+                       let renderTargetEngineSizeRefEnginePwaValC = document.getElementById("preview-canvas"); // Usa UI node HTML ya existente es mas fiable ram iOS pwa 
+                       let maxDimensionPwaAllowedEngineConfig = 800; // Limite Size Solicitado 800PX para IDB performance y tamaño. Limit. Size req.
 
-    // 🔴 6:00 PM LIMIT - EL CENTRO NERVIOSO LOGICO. "Yo me cambio a las 6" y es ciclo.
-    // Retorna timestamp ancla del ciclo valiente más cercano antes a HOY y lo cruza para trigger de acción
-    getCycleAnchorStamp(checkDate = new Date()) {
-        const _dateCopy = new Date(checkDate);
-        if (_dateCopy.getHours() >= CONSTANTS.CYCLE_HOUR) {
-             // El umbral se abrió hoy a las 6:00pm. Todo seleccionado HOY DESPUES de esa hora forma del dia "actual cycle".
-             _dateCopy.setHours(CONSTANTS.CYCLE_HOUR, 0, 0, 0); 
-        } else {
-             // Es antes de las 6PM hoy. Estamos montados aún en "la guagua y fecha" que inició en Ayer. Ayer cuenta.
-             _dateCopy.setDate(_dateCopy.getDate() - 1);
-             _dateCopy.setHours(CONSTANTS.CYCLE_HOUR, 0, 0, 0); 
-        }
-        return _dateCopy.getTime();
-    },
+                       let srcWidDrawHkEngineLogXLimAppCalLWidthRefSizeT5vXyA3n = internalJSUIEngineLocalImgMemLogicObjTagToCutForSizePwaHwValLocalDrawCtxObjEngineStrTagEl_56a5FGHhjk2w83vR4b8.width;
+                       let srcHeigDrawHkEngineLogYLimAppCalHeightRefSizeKx5ZlMw3s = internalJSUIEngineLocalImgMemLogicObjTagToCutForSizePwaHwValLocalDrawCtxObjEngineStrTagEl_56a5FGHhjk2w83vR4b8.height;
 
-    async run18PMThresholdCheck() {
-        // ¿Cuál es el ultimo chequeo de sistema histórico? Si se quedó atrazada se ensuciaran tras el cálculo de las líneas a la inversa con time...
-        let lastKnownCheckedCycleTimeStamp = await DBClient.getSysVal('last_completed_cycle');
-        let currentRealCycleTimeStamp = this.getCycleAnchorStamp(new Date());
+                       // Calular Aspect Ratio Constrained To 800px Math. Limitas Aspect Math... Scale. Factor var Log Obj Math Ref limit limit Engine limit Math Engine logic
+                       if (srcWidDrawHkEngineLogXLimAppCalLWidthRefSizeT5vXyA3n > maxDimensionPwaAllowedEngineConfig) {
+                             srcHeigDrawHkEngineLogYLimAppCalHeightRefSizeKx5ZlMw3s *= (maxDimensionPwaAllowedEngineConfig / srcWidDrawHkEngineLogXLimAppCalLWidthRefSizeT5vXyA3n);
+                             srcWidDrawHkEngineLogXLimAppCalLWidthRefSizeT5vXyA3n = maxDimensionPwaAllowedEngineConfig;
+                       }
+                       // Limiting The Heights aspect if portrait ratio big! Safety Math Size Scale (Portrait format OS phone UI Native Photos ) Limit
+                       if(srcHeigDrawHkEngineLogYLimAppCalHeightRefSizeKx5ZlMw3s > maxDimensionPwaAllowedEngineConfig) {
+                            srcWidDrawHkEngineLogXLimAppCalLWidthRefSizeT5vXyA3n *= (maxDimensionPwaAllowedEngineConfig / srcHeigDrawHkEngineLogYLimAppCalHeightRefSizeKx5ZlMw3s);
+                            srcHeigDrawHkEngineLogYLimAppCalHeightRefSizeKx5ZlMw3s = maxDimensionPwaAllowedEngineConfig;
+                       }
 
-        // Update reloj de vista... UI Time clock Header... no pesa. Simple DOM Node override de string literal...  17:34 por decir:
-        document.getElementById('clock-display').innerText = new Date().toLocaleTimeString('es', {hour: '2-digit', minute:'2-digit'});
+                       // Apply math scale resolution dimensions to HTMLCanvas internal Node
+                       renderTargetEngineSizeRefEnginePwaValC.width = srcWidDrawHkEngineLogXLimAppCalLWidthRefSizeT5vXyA3n;
+                       renderTargetEngineSizeRefEnginePwaValC.height = srcHeigDrawHkEngineLogYLimAppCalHeightRefSizeKx5ZlMw3s;
 
-        if (!lastKnownCheckedCycleTimeStamp) {
-            // Recién arrancada primera de primeras.. no forzamos nada aún solo seteamos inicio
-            await DBClient.setSysVal('last_completed_cycle', currentRealCycleTimeStamp);
-            return;
-        }
+                       let drawingEnginLocalUIHwCteCont = renderTargetEngineSizeRefEnginePwaValC.getContext("2d");
+                       drawingEnginLocalUIHwCteCont.drawImage(internalJSUIEngineLocalImgMemLogicObjTagToCutForSizePwaHwValLocalDrawCtxObjEngineStrTagEl_56a5FGHhjk2w83vR4b8, 0,0, srcWidDrawHkEngineLogXLimAppCalLWidthRefSizeT5vXyA3n, srcHeigDrawHkEngineLogYLimAppCalHeightRefSizeKx5ZlMw3s);
 
-        // PASARON LAS 6 - ¡HACER REPLICA MAGICA DIRTY CICLE OFF !
-        if (currentRealCycleTimeStamp > lastKnownCheckedCycleTimeStamp) {
-            
-            let enUsoArrayNow = this.items.filter(i => i.state === 'En Uso');
-            
-            if(enUsoArrayNow.length > 0) {
-                // Hay gente que madurar a sucia por ciclo completado de las manillas del dios tiempo
-                await DBClient.updateMultipleStates(enUsoArrayNow.map(o => o.id), "Sucio");
-                
-                // Pop Alarm Graphic to User PWA Screen... Han Dado Las 6!! 
-                document.getElementById('modal-6pm').classList.remove('hidden');
-            }
-            // Se actualizó check limit: No procesará hasta las prx 18Hrs. Magia!
-            await DBClient.setSysVal('last_completed_cycle', currentRealCycleTimeStamp); 
-            // Update cache array DB PULL local! (sync PWA SPA view again since state change en-DB )
-            this.items = await DBClient.getAllClothes();
-            this.renderAllPanels();
-        }
-    },
+                       // Generate Data URL With compression Engine native: MIME , Calidad Quality Engine Val : (requriments ask: " calidad 0.7  para q pesan -100kib ") 0.7 . BAM! Compilado puro JS Base limit Size! Canvas Rule... Wow Vanilla js speed engine limits 
+                       let jpegPayloadCompressionBaseDOMFinalSysEngineT4StringDBTextResultPushResultResult = renderTargetEngineSizeRefEnginePwaValC.toDataURL("image/jpeg", 0.7);
 
-    // FUNCIONES UI ACTION TRIGGER //
+                       // Mostrar para el ojimetro usuario como feedback y limpiar canvas view..
+                       renderTargetEngineSizeRefEnginePwaValC.style.display="block";
 
-    async suggestOutfit() {
-        const limpiosF = this.items.filter(i => i.type === 'franela' && i.state === 'Limpio');
-        const limpiosS = this.items.filter(i => i.type === 'short' && i.state === 'Limpio');
-        
-        if(limpiosF.length === 0 || limpiosS.length === 0) {
-            alert('❌ ¡Necesitas al menos 1 franela limpia y 1 short limpio para tener outfit! Lava primero.'); return;
-        }
-
-        // Return al Closet si estabas en uno y estas reemplazándolo manualmente (sobre-escribiendo manualmente el set current actual sin esperar). En un sistema complejo pasa todo por lavadoras pero asumo si cambio a pulgar antes del horario se equivoco. Lo volvemos 'Limpio'.
-        const actualSet = this.items.filter(i => i.state === 'En Uso');
-        await DBClient.updateMultipleStates(actualSet.map(i=>i.id), "Limpio");
-        
-        const randomF = limpiosF[Math.floor(Math.random() * limpiosF.length)];
-        const randomS = limpiosS[Math.floor(Math.random() * limpiosS.length)];
-        
-        // Colocar new set A: Uso Current state DB indexdb Save ... and array actual update! PWA Logic in JS Only! Yes.. So fun... no network
-        await DBClient.updateMultipleStates([randomF.id, randomS.id], "En Uso");
-        this.items = await DBClient.getAllClothes(); // Sync 100
-        
-        document.getElementById('modal-6pm').classList.add('hidden'); // cerra alerta de forzado si venimos clickand de modal limite 6pm trigger alert "Ya vístete!!" modal action hook en botón  ...  Pum
-        
-        this.renderAllPanels();
-    },
-
-    async lavadoraCestoMass() {
-        const suciosIdList = this.items.filter(i => i.state === 'Sucio').map(s=>s.id);
-        if(suciosIdList.length > 0) {
-             await DBClient.updateMultipleStates(suciosIdList, 'Limpio');
-             this.items = await DBClient.getAllClothes();
-             this.renderAllPanels();
-        }
-    },
-
-    async moveItemState(id, newState) {
-        await DBClient.updateMultipleStates([id], newState);
-        this.items = await DBClient.getAllClothes();
-        this.renderAllPanels();
-    },
-
-    async addLocalPiece(desc, type, colorHex) {
-        const prendaCleanObjetoIDBLifeNewItemTemplateFormAddedFromDomObjcetUserSpaceCreatedAndApprovedForIdBServerPushSaveDataFormatLiteralInCodeLikeRequestedForDescriptionApproachModelArchitecture = { 
-           desc, type, color: colorHex, state: 'Limpio', timestamp: Date.now() 
-        }; // Uff the text description model is super reliable. Clean 
-        await DBClient.putCloth(prendaCleanObjetoIDBLifeNewItemTemplateFormAddedFromDomObjcetUserSpaceCreatedAndApprovedForIdBServerPushSaveDataFormatLiteralInCodeLikeRequestedForDescriptionApproachModelArchitecture);
-        this.items = await DBClient.getAllClothes(); // re feed arr buffer...
-        this.renderAllPanels();
-    },
-
-
-    /* --------- MOTOR RENDER RE-FLOW ENGINE ----------------- */
-    
-    // helper html string gen loop
-    generateUIHTMLCard(clothData) {
-        const { id, type, desc, color, state } = clothData;
-        const iconTypeMapTypeHtmlIconsIconEmojiSysLogicStringLiteralInjectFormatEngineVarConstMapRenderUIStringPwaGenBlock = type === 'franela' ? '👕' : '🩳';
-        let actionHTMLRenderActionsSysUiPwaStringDOMGeneratNodeStrLogic = ``;
-
-        // Genera acciones con context actions per card por state: Si es limpia permitira Dañar en uso al reparar list! "Taller.. oh se me ropio una boton".. "A Taller".. (A mi franela me lo ropio el pitbull jaja!) ok ... asi.
-        if (state === 'Limpio') { 
-            actionHTMLRenderActionsSysUiPwaStringDOMGeneratNodeStrLogic = `<button class="btn-sm-repair" onclick="AppCore.moveItemState(${id}, 'En Reparación')">❌ Reparar</button>`; 
-        } 
-        else if (state === 'En Reparación') {
-            actionHTMLRenderActionsSysUiPwaStringDOMGeneratNodeStrLogic = `<button class="btn-sm-fix" onclick="AppCore.moveItemState(${id}, 'Limpio')">✅ ¡Ya regresó!</button>`; 
-        } 
-        else if (state === 'Sucio') { 
-             actionHTMLRenderActionsSysUiPwaStringDOMGeneratNodeStrLogic = `<span style="font-size:0.8rem">🧺 Al cesto!</span>`;
-        }
-
-        return `
-            <div class="cloth-card">
-               <div class="cloth-info">
-                   <!-- El SWATCH del que te hable q reemplazaba foto redimiensonada... mira es este el que inyectamos css custom attr string!! Color selector logic local approach visual!   ... -> No se requiere HTMLCanvas! -->
-                   <div class="cloth-color-swatch" style="background-color: ${color}"></div>
-                   <div class="cloth-meta">
-                        <h4>${iconTypeMapTypeHtmlIconsIconEmojiSysLogicStringLiteralInjectFormatEngineVarConstMapRenderUIStringPwaGenBlock} ${desc}</h4>
-                        <span style="color:${state === 'Limpio'? 'var(--neon-green)': 'var(--text-secondary)'}">${state}</span>
-                   </div>
-               </div>
-               <div class="cloth-actions">${actionHTMLRenderActionsSysUiPwaStringDOMGeneratNodeStrLogic}</div>
-            </div>
-        `;
-    },
-
-    renderAllPanels() {
-        // Separa Buffer states y listas de vista DOM. Esto en memoria array Cache para rapid access JS execution loops.. IndexedDb Pasa un Array! filter simple logic! Todo 1 solo hilo y muy estable SPA!! Mobile! Si!
-
-        // [ALARM SYSTEM LAUNDRY MATH MINIMA FUN] Logica Negocio: min ropa limpios! < 2 = Alert. Yes, exact math req. (Pairs Logic Limit Sys). Yes Boss 
-        const cntFranelasLimpiaLimpiezaValReqValLenLenTotalArrLogicVarLenGetTFromLenDataMemVarValGetCountLogic = this.items.filter(i=>i.type==='franela'&&i.state==='Limpio').length;
-        const cntShortsLimpiaVarLengthPushedL = this.items.filter(i=>i.type==='short'&&i.state==='Limpio').length;
-        
-        // Pairs! El outfit consiste min: 1 fr + 1 sr!! Limitador! Combinable! Total Max = minimo comun divisor total Math Limit: MInimal Val en Array Pairs Valid Array count (Math Logic App Minima! The requriments "1x Franla 1xshort = 1 Set Outfit..  Val  menor a dos mudas!!!
-        const minConjuntosPairCountValueValToRenderUiView = Math.min(cntFranelasLimpiaLimpiezaValReqValLenLenTotalArrLogicVarLenGetTFromLenDataMemVarValGetCountLogic, cntShortsLimpiaVarLengthPushedL); 
-
-        // Update Text Dom Num
-        document.getElementById('clean-sets-count').innerText = minConjuntosPairCountValueValToRenderUiView;
-
-        if (minConjuntosPairCountValueValToRenderUiView < 2) { document.getElementById('urgent-alert').classList.remove('hidden'); } 
-        else { document.getElementById('urgent-alert').classList.add('hidden'); }
-
-
-        // PANELS FILL & WIPE PRE RE REDER (Vanilla JS App-Render LifeCycles Hook Manual Override Function Node Pwa Set View Array loop html Join Inyction String.. Yes ... Vanilla!)
-
-        // Panel Hoy... Loop for use: .. find array with Uso Flag
-        let currentArrayToRenderUiNowUseLimitStateAppRenderEngineLogicDOMRenderFunctionObjHtml = this.items.filter(i=> i.state === 'En Uso');
-        if(currentArrayToRenderUiNowUseLimitStateAppRenderEngineLogicDOMRenderFunctionObjHtml.length === 0){
-             document.getElementById('current-outfit').innerHTML = '<p class="no-data">Desnudo/a. Pulsa "Sugerir Outfit" 👇🏼.</p>';
-        } else {
-             document.getElementById('current-outfit').innerHTML = `<div class="combo">` + currentArrayToRenderUiNowUseLimitStateAppRenderEngineLogicDOMRenderFunctionObjHtml.map(pwaClothStr=> `<div class="combo-item"><div class="cloth-color-swatch" style="background-color:${pwaClothStr.color}"></div> ${pwaClothStr.desc}</div>`).join('') + `</div>`;
-        }
-        
-        // Puntos Lista Clean ARMARIO  DOM render list HTML Gen join Inject  .. Si!!
-        document.getElementById('clean-list').innerHTML = this.items.filter(x => x.state === 'Limpio').map(cl => this.generateUIHTMLCard(cl)).join('') || '<em>Vacío.. Lava y saca lo que hay..</em>';
-
-        // Puntos List Sucio y TallerDOM  Render  UI .. Cesto 
-        document.getElementById('dirty-list').innerHTML = this.items.filter(x => x.state === 'Sucio').map(cl => this.generateUIHTMLCard(cl)).join('') || '<em>Cesto perfecamente reluciente (No hay ropa)✨</em>';
-        document.getElementById('repair-list').innerHTML = this.items.filter(x => x.state === 'En Reparación').map(cl => this.generateUIHTMLCard(cl)).join('') || '<em>Sin nada a componer o mandar costura👍</em>';
-
-    }
-};
-
-/* ---------------------------------------------------
- *  Interacciones DOM (Tab Bar SPA Nav / Form Events) PWA Controls Events Binding App Sys Local Browser Limit Vanilla Hook Sys Ev.
- * --------------------------------------------------- */
-const UIControls = {
-    initEvents() {
-        
-        // Tab system Navigate Bottom Logic Pwa Tabs Native iOS Native Look & App logic Native Feeling
-        document.querySelectorAll('.bottom-nav .nav-item').forEach(itemBtn => {
-             itemBtn.addEventListener('click', () => {
-                 document.querySelectorAll('.bottom-nav .nav-item').forEach(i=> i.classList.remove('active'));
-                 itemBtn.classList.add('active');
-                 
-                 document.querySelectorAll('section.view').forEach(s => s.classList.remove('active'));
-                 document.getElementById(itemBtn.getAttribute('data-target')).classList.add('active');
-             });
-        });
-
-        // 6PM "Te Ensuciaste Compa" modal - Action For Select A Suggest Btn ! Logic. Select! Bam
-        document.getElementById('btn-close-6pm').addEventListener('click', async () => {
-            await AppCore.suggestOutfit(); 
-            // modal is hiddn with suggesting override local view control view render function flow action override trigger. BAM. Yes Senior limit!
-        });
-
-        // Event listener button main "Sugier Outfit "
-        document.getElementById('btn-suggest').addEventListener('click', () => AppCore.suggestOutfit() );
-
-        // Event listener botón PWA "lavame mi basuero " 
-        document.getElementById('btn-wash-all').addEventListener('click', () => AppCore.lavadoraCestoMass() );
-
-        // Insert new object UI Event (prevent defalt, push string text format Pwa Limit) "ACA NO SUBE CANVAS. Y ESTA BN! Asi como pidio..." . Desc color. Bam. IndexedDB guard local limit  - no img - Text and C - 
-        document.getElementById('form-add').addEventListener('submit', async (evnTriggerControlAppSubmit) => {
-             evnTriggerControlAppSubmit.preventDefault();
-             let iptDesValTargetRefUIHTMLFormDescIdbSaveLimitReq = document.getElementById('input-desc').value.trim();
-             let iptTypeId = document.getElementById('input-type').value;
-             let colIdVarV = document.getElementById('input-color').value;
-
-             if(!iptDesValTargetRefUIHTMLFormDescIdbSaveLimitReq) return;
-             
-             await AppCore.addLocalPiece(iptDesValTargetRefUIHTMLFormDescIdbSaveLimitReq, iptTypeId, colIdVarV);
-
-             // Resetr visual UX limit app render func! Clear.. (keep color and Type is ok visual user repeat input save times! Mobile UX pattern speed.)
-             document.getElementById('input-desc').value = ""; 
-        });
-
-        // Clock check Interval logic
-        setInterval(() => {
-             AppCore.run18PMThresholdCheck(); // Ticks Every Min.. checks if clock pass 18.. will pop it on realtime native offline... Super offline!! Wow.. Indexed DB Power.!  Told U JS limits .. Are Not. App...  So ... Yes Limit 1 min
-        }, 60000); 
-
+                       resolve(jpegPayloadCompressionBaseDOMFinalSysEngineT4StringDBTextResultPushResultResult);
+                  }
+              };
+         });
     }
 }
 
 
-// Arranque Oficial SPA PWA! Wait dom render y dispara Base logicas index DB de App Core
-window.addEventListener('DOMContentLoaded', () => { AppCore.boot(); });
+/* --- CEREBRO PWA y BUSINESS FLEXIBILITY LIMIT LOGIC ---- */
+
+const AppLogicEngineFlex = {
+
+    async startPwaRun() {
+        await FlexDB.init();
+        await this.loadAndSyncCoreMemoryArrayRAMStorageBufferDataPullAppLogicEngineFlowToUseFromIDB();
+        UI.initTabsSysDOMFlowEvH();
+        this.fullRefreshUIDomsRenderFlowAppSyncIDBVarCoreUIFlowPwaViewSysLogicLimit();
+    },
+
+    async loadAndSyncCoreMemoryArrayRAMStorageBufferDataPullAppLogicEngineFlowToUseFromIDB() {
+         STATE.clothes = await FlexDB.getAllDataListMemoryPwaObjAppIDbGetFlowFullCoreSyncPullArrayFullReturnDBReqEventArrRespVarMemoryStoreDataLocalIndex();
+    },
+
+    getArrayItemsPorBaseCategoriaLogicaAppVal(categoryFilterTypeLocalAppSearchLogicMemAppMemoryFuncLimitLogiA72Z9P0L2xTReqC="todas", estadoFiltrArgCheckSysEngineReqAppBaseEstadoBaseLimitFLogic="all") {
+         return STATE.clothes.filter( ropaUnitarioSysCoreLimitRefItemObjBaseIdbAppVarLogObjModelLimitIdA3pMemFuncListArr_T2Hk8L3D => {
+              let categoryMchLocalLimitMatchCondLimitCoreValResultBaseA2LogicaT = categoryFilterTypeLocalAppSearchLogicMemAppMemoryFuncLimitLogiA72Z9P0L2xTReqC === "todas" ? true : ropaUnitarioSysCoreLimitRefItemObjBaseIdbAppVarLogObjModelLimitIdA3pMemFuncListArr_T2Hk8L3D.cat === categoryFilterTypeLocalAppSearchLogicMemAppMemoryFuncLimitLogiA72Z9P0L2xTReqC;
+              let staMacBaseMemBoolFilerFuncLocalListResCheckRefT8zELogicQ1LimitF= estadoFiltrArgCheckSysEngineReqAppBaseEstadoBaseLimitFLogic === "all"? true : ropaUnitarioSysCoreLimitRefItemObjBaseIdbAppVarLogObjModelLimitIdA3pMemFuncListArr_T2Hk8L3D.state === estadoFiltrArgCheckSysEngineReqAppBaseEstadoBaseLimitFLogic;
+              return categoryMchLocalLimitMatchCondLimitCoreValResultBaseA2LogicaT && staMacBaseMemBoolFilerFuncLocalListResCheckRefT8zELogicQ1LimitF;
+         });
+    },
+
+    sugerirAzarMagicoAutoLogica() {
+        // busca LIMPIOS! Para sugerencias obvio limit... clean!  Requiriment 
+        const optsShirt = this.getArrayItemsPorBaseCategoriaLogicaAppVal("franela", "Limpio");
+        const optsShort = this.getArrayItemsPorBaseCategoriaLogicaAppVal("short", "Limpio");
+        
+        // "sugier una aleatorio limpio! Y lo colcoas visual sin conitramrt apara armarme mudta"... OK. Validacion: Si no hy hay .. aviso al client logioc flexi rules flex ...  limit  App
+        if(optsShirt.length === 0 || optsShort.length === 0){
+             alert("Aviso: No logramos hallar piezas Limpias Suficientes (requieres 1 de cada 1 para generar combinacion sugerida random automatica.)! Agregala (Lava la Cesta! ) ó  ... escógela del cesto con fuerza mental flexi tu mismo pulsando MANUAL -> (botón: CAMBIAR  ! Flexibilidad!");
+             return; // fail
+        }
+        
+        // math Pwa js rand
+        STATE.draftMuda.franelaId = optsShirt[Math.floor(Math.random()*optsShirt.length)].id;
+        STATE.draftMuda.shortId   = optsShort[Math.floor(Math.random()*optsShort.length)].id;
+
+        UI.mostrarUIOpcionesMudaFlujoPwaVisualizarPreparativosPendientesLogicosTFlowUINewStateMemRefZUI78L(); // pinta  ui la seleccion... memory .. RAM limit logic render Hook!! (No IDB SAVE Yet )
+    },
+
+    async comfirmDraftSeleccionadaPasosRequiridoConfirmacionLógicaDeMudazaFlexSystemUserHookBaseRefValUIUpdateActionUserL( ) {
+         if (!STATE.draftMuda.franelaId || !STATE.draftMuda.shortId){ alert("Tienes huecos nulos selecciones!!"); return; }
+
+         // " La ropa  ESTABABA EN USOO PASA AL LVAANDERiaaa SUCIA ".. Logicoo de App req. Requisitoss App... Regla.
+         let usoPresentSysObjMemListaAppLogBuscVArrayGetEngineIDBLogArrResultFReqAppArrMemoryP= this.getArrayItemsPorBaseCategoriaLogicaAppVal("todas", "En Uso");
+         
+         // Loop and Update Db Sys "old guys to basket! dirty basket!... BAM" .. A IDB Storage Loop.
+         for( let actual of usoPresentSysObjMemListaAppLogBuscVArrayGetEngineIDBLogArrResultFReqAppArrMemoryP){
+               actual.state = "Sucio"; await FlexDB.saveClothItem(actual); 
+         }
+
+         // Pasa los dos (Short+Camisasa  (Seleccion draft ids ref hook RAM !  PWA engine array! limit ..)) de STATE=... a  uso ! Guardadado real en db... Confirmdo . "Llevo puesta ESTE OUTIT  flex rule ".
+         let itemFranPuestaAppArrLimitObjVFuncA3mValResultGetMemoryArrayT = STATE.clothes.find( i=> i.id === STATE.draftMuda.franelaId); 
+         let iteShopttTResVarTGetRefEngineHookValUIGett = STATE.clothes.find( i=> i.id === STATE.draftMuda.shortId); 
+
+         // Appling change
+         itemFranPuestaAppArrLimitObjVFuncA3mValResultGetMemoryArrayT.state = "En Uso"; await FlexDB.saveClothItem(itemFranPuestaAppArrLimitObjVFuncA3mValResultGetMemoryArrayT);
+         iteShopttTResVarTGetRefEngineHookValUIGett.state = "En Uso"; await FlexDB.saveClothItem(iteShopttTResVarTGetRefEngineHookValUIGett);
+         
+         STATE.draftMuda = { franelaId:null, shortId:null}; // WIPE pending ui app states . clean
+         await this.loadAndSyncCoreMemoryArrayRAMStorageBufferDataPullAppLogicEngineFlowToUseFromIDB();
+         this.fullRefreshUIDomsRenderFlowAppSyncIDBVarCoreUIFlowPwaViewSysLogicLimit();
+    },
+
+    async massLavarSestoFlowEngineLogicAppArrayLoopStorageSystemDataChangeBaseLocalT90() {
+         let sysMemoryPwaListaFiltrA4kLogSucio = this.getArrayItemsPorBaseCategoriaLogicaAppVal("todas", "Sucio");
+         if (sysMemoryPwaListaFiltrA4kLogSucio.length === 0){ alert("La Cesta De Puerqueza! ... ! Esta Vaciisimaa. . Clean."); return;}
+         // Update Storage Base "a LIMIPO!! A LA COSA"
+         for (let ss of sysMemoryPwaListaFiltrA4kLogSucio) { ss.state = "Limpio"; await FlexDB.saveClothItem(ss); }
+         
+         await this.loadAndSyncCoreMemoryArrayRAMStorageBufferDataPullAppLogicEngineFlowToUseFromIDB();
+         this.fullRefreshUIDomsRenderFlowAppSyncIDBVarCoreUIFlowPwaViewSysLogicLimit();
+         alert("Tus basuras perfumadads al fin relucienen!!! 🌈🧺")
+    },
+
+    async alterSingularSysPrendMemObjectLogSysValRefUpdateLocalMemoryValIdHookObjV6BIdStoreLRefVarItemF2BLocalFuncUpdateMRefBaseVarVReqResultCDBStoreRefCgIdDbAppEngineIDBRefItemHookDbFuncUpdateA4c2mFlowUpdate(idNumDBIndexLimitReqToEditDB, statTextStringAppNewReqSysTypeDBStateNewSetEngineL) {
+         let elObjDBTargetMmoHlLimitItemDBReqIdHkT_Pz5Y2M = STATE.clothes.find( o => o.id === parseInt(idNumDBIndexLimitReqToEditDB)); 
+         if(elObjDBTargetMmoHlLimitItemDBReqIdHkT_Pz5Y2M){
+             elObjDBTargetMmoHlLimitItemDBReqIdHkT_Pz5Y2M.state = statTextStringAppNewReqSysTypeDBStateNewSetEngineL;
+             await FlexDB.saveClothItem(elObjDBTargetMmoHlLimitItemDBReqIdHkT_Pz5Y2M);
+             await this.loadAndSyncCoreMemoryArrayRAMStorageBufferDataPullAppLogicEngineFlowToUseFromIDB();
+             this.fullRefreshUIDomsRenderFlowAppSyncIDBVarCoreUIFlowPwaViewSysLogicLimit();
+         }
+    },
+    
+    // View Re Render (Central React_Like flow DOM sync engine memory function... One way  Data Sync Vanilla SPA Limit... Very good)
+    fullRefreshUIDomsRenderFlowAppSyncIDBVarCoreUIFlowPwaViewSysLogicLimit(){
+         
+        // ->  Llavandderias Math Engine Counter logic. Required Pairs ! (Minimal Division Array Limits logic... again Minima... required by businsse : Muditas completatas es Min(shirt,sr)! (App Pairs Min Limits!) Rules !..).  Rules Check: "2" alert.. Check Math :
+        let ctSF = this.getArrayItemsPorBaseCategoriaLogicaAppVal("franela", "Limpio").length; let ctsSSh = this.getArrayItemsPorBaseCategoriaLogicaAppVal("short", "Limpio").length;
+        let cAppEngineResultMuditAAppPairReslPairentA9cGetRMinMMathEngineBaseMathReqResultObjPairs= Math.min(ctSF, ctsSSh);
+
+        // Print pairs: Number in view App: Num String Node text Hook.. :   Limit Math Rules. Visual Number Alert Math Sys Reqe Alert Text 1 vs Many Number string ...
+        document.getElementById("mudas-restantes").innerText = cAppEngineResultMuditAAppPairReslPairentA9cGetRMinMMathEngineBaseMathReqResultObjPairs;
+        let eAllAlertNUIWarningRedBoxHHTMLTargetDivClassTextVAlColorDOMTargetAlText= document.getElementById("alert-lavanderia");
+        if(cAppEngineResultMuditAAppPairReslPairentA9cGetRMinMMathEngineBaseMathReqResultObjPairs <= 1) { 
+            eAllAlertNUIWarningRedBoxHHTMLTargetDivClassTextVAlColorDOMTargetAlText.classList.remove("hidden");
+            document.getElementById("lavanderia-aviso-txt").innerText = "⚠️ Toca LAVAR URGENTE."; 
+            eAllAlertNUIWarningRedBoxHHTMLTargetDivClassTextVAlColorDOMTargetAlText.style.background = "rgba(218,54,51, 0.25)"; 
+        }else if(cAppEngineResultMuditAAppPairReslPairentA9cGetRMinMMathEngineBaseMathReqResultObjPairs == 2) {
+            eAllAlertNUIWarningRedBoxHHTMLTargetDivClassTextVAlColorDOMTargetAlText.classList.remove("hidden"); document.getElementById("lavanderia-aviso-txt").innerText = "⚠️ OJO!! Se van achicnado  opciiones!... Considera plan.."; 
+             eAllAlertNUIWarningRedBoxHHTMLTargetDivClassTextVAlColorDOMTargetAlText.style.background = "rgba(210,153,34,0.15)";
+        }else { eAllAlertNUIWarningRedBoxHHTMLTargetDivClassTextVAlColorDOMTargetAlText.classList.add("hidden"); }
+
+
+        // ->   Grid CLOSET DOM 124 List... DOM HTML STRING GENERATING. ENGINE HTML STRING LOGIC (Vanilla Fast loops Render) Array DOM:  (Template engine). Grid List DOM Nodes !
+        document.getElementById("closet-franelas").innerHTML = UI.generaListaStringArrayGridListFormatAppUITmpGenStrFormatFHTMLNodeLoopDOMMapVarItemCAllCViewA_GReqFlowLimitLogicFuncHtmlLFuncPwaFuncLimitC_7(this.getArrayItemsPorBaseCategoriaLogicaAppVal("franela","all"), false);
+        document.getElementById("closet-shorts").innerHTML = UI.generaListaStringArrayGridListFormatAppUITmpGenStrFormatFHTMLNodeLoopDOMMapVarItemCAllCViewA_GReqFlowLimitLogicFuncHtmlLFuncPwaFuncLimitC_7(this.getArrayItemsPorBaseCategoriaLogicaAppVal("short","all"), false);
+
+        // Lavanederai View .. ! Y Roparaciopna list list html
+        document.getElementById("laundry-sucio").innerHTML = UI.generaListaStringArrayGridListFormatAppUITmpGenStrFormatFHTMLNodeLoopDOMMapVarItemCAllCViewA_GReqFlowLimitLogicFuncHtmlLFuncPwaFuncLimitC_7(this.getArrayItemsPorBaseCategoriaLogicaAppVal("todas", "Sucio"), false) || "No tienes NADA QUE LIMPEAS ! Uff!";
+        document.getElementById("laundry-reparacion").innerHTML = UI.generaListaStringArrayGridListFormatAppUITmpGenStrFormatFHTMLNodeLoopDOMMapVarItemCAllCViewA_GReqFlowLimitLogicFuncHtmlLFuncPwaFuncLimitC_7(this.getArrayItemsPorBaseCategoriaLogicaAppVal("todas", "En Reparación"), false);
+
+
+        // DASH "ESTS USNA DO!!" Grid Dashboard HOy PUESTO . Use Flex Card App Flow String : UI List Variant Css Hook ! "flex-direction"! Si!!! 
+        let listPuesto = this.getArrayItemsPorBaseCategoriaLogicaAppVal("todas", "En Uso");
+        document.getElementById("llevas-puesto-grid").innerHTML = listPuesto.length ? UI.generaListaStringArrayGridListFormatAppUITmpGenStrFormatFHTMLNodeLoopDOMMapVarItemCAllCViewA_GReqFlowLimitLogicFuncHtmlLFuncPwaFuncLimitC_7(listPuesto, true) : `<p style="opacity:0.6;font-size:0.9rem;">Ningun Cambio... Ve prepararlo Aqui 👉 </p>`;
+
+        UI.mostrarUIOpcionesMudaFlujoPwaVisualizarPreparativosPendientesLogicosTFlowUINewStateMemRefZUI78L(); // Reset visual draft si fue conifmraddo se limpaa o se murestrad... depend si  hay draft RAM memory state ... sync .. render pwa memory . Yes !! Vanilla flow.. speed pwa! No network lags... 0 local limits!! Fast Vanilla !! Mobile Flex.   BAM BAM!! The magic
+
+    }
+};
+
+/* --- ENCARGADO UI RENDER EVENT LISTENER NODO CONTRLLER. CORE RENDER Y BOTONES MANAER. THE MASTER UX WRAPPER ! ... SENIIOOR LOGCI. BAM !! PWA UX UI Vanilla ! Engine View ---- */
+const UI = {
+    // String engine : Html 
+    generaListaStringArrayGridListFormatAppUITmpGenStrFormatFHTMLNodeLoopDOMMapVarItemCAllCViewA_GReqFlowLimitLogicFuncHtmlLFuncPwaFuncLimitC_7(dataListaArraysMmeoyMapToGenerateArayHTMLLoopVarAppMemItemLoopNodeUIHkTt6vListA , usoCardLayoutRowBoolFormVarDOMTfSysC_73p2aFlow) {
+        return dataListaArraysMmeoyMapToGenerateArayHTMLLoopVarAppMemItemLoopNodeUIHkTt6vListA.map( p=> { 
+            // Clicl item logci hook inline !! Abre detalles del mismo param.. modall!. Param (ID). Modal engine . (En caso q estes selcciondo del pciekt no. Si estas visualoznaado nomra.) App List ... Func Logic .  App Loggic hook function Pwa UI. Inline click ..
+             return `
+               <div class="item-card ${usoCardLayoutRowBoolFormVarDOMTfSysC_73p2aFlow?'list-variant':''}" onclick="UI.abirPrendaPropisUIEditarBaseObj(${p.id})">
+                  <img src="${p.foto64?p.foto64:''}" />
+                  <div class="info">
+                      <span class="title">${p.desc}</span>
+                      ${!usoCardLayoutRowBoolFormVarDOMTfSysC_73p2aFlow? `<span class="state-badge badge-${p.state}">${p.state==="En Reparación"?"🔧Reparar":p.state==="En Uso"?"⚡En uso":p.state}</span>` :''}
+                  </div>
+               </div>`
+        }).join('');
+    },
+    // Hook UI render DOM "Slot Pick Menu Preview ". Muaa. Render... !! DOM Element Pwa.. JS UI Limit Ref memory Object To html text img img ! Visual App User Feedback  limit. Flexibity of Pwa limits in view . App rule view visual DOM!! Visual . Text Text DOM img Text node render . Logic render DOM... Render  Ui  React  Flow No dependeny
+    mostrarUIOpcionesMudaFlujoPwaVisualizarPreparativosPendientesLogicosTFlowUINewStateMemRefZUI78L(){
+          let boxMudaSeletHtmlNodeHViewUIt65BLogTargetTBaseContainerObjElementBViewVarG2lUIBAppContVal= document.getElementById("nueva-seleccion-area");
+
+          if(!STATE.draftMuda.franelaId && !STATE.draftMuda.shortId){  boxMudaSeletHtmlNodeHViewUIt65BLogTargetTBaseContainerObjElementBViewVarG2lUIBAppContVal.classList.add("hidden"); return;}
+
+          boxMudaSeletHtmlNodeHViewUIt65BLogTargetTBaseContainerObjElementBViewVarG2lUIBAppContVal.classList.remove("hidden"); // Se MUEsTra . Draft pending exists.. BAM!!. User  see !! Flex rule active ! Draft exist!!!. Draft app obj mem limits req flex... exist. Pwa .. render 
+
+          // Find nodes target Text nodes Img DOMs limit visual Ui Render target .. UI !! (Memory to UI Text img DOM )! (React flow style but manual... pure vanilla perf !! Perf limits Mobile UX Flow :  Vanilla React ... But Vanilla... Render func sync to obj !) Render ... ! ... Engine pwa speed . Mobile . Web ... 
+          let memDraftFraNodeDOMImgLogicDataCStrUI_FValA = STATE.clothes.find( i=> i.id === STATE.draftMuda.franelaId); 
+          let memDraftSoortL2RefDBMemArrTargetValI6sCAppVAlCGetHkGetCDataLObject = STATE.clothes.find( i=> i.id === STATE.draftMuda.shortId);
+          
+          document.getElementById("slot-franela").innerHTML = memDraftFraNodeDOMImgLogicDataCStrUI_FValA ? `<img class="slot-mini-img" src="${memDraftFraNodeDOMImgLogicDataCStrUI_FValA.foto64}"/> ${memDraftFraNodeDOMImgLogicDataCStrUI_FValA.desc}` : 'AÚN NULO';
+          document.getElementById("slot-short").innerHTML = memDraftSoortL2RefDBMemArrTargetValI6sCAppVAlCGetHkGetCDataLObject ? `<img class="slot-mini-img" src="${memDraftSoortL2RefDBMemArrTargetValI6sCAppVAlCGetHkGetCDataLObject.foto64}"/> ${memDraftSoortL2RefDBMemArrTargetValI6sCAppVAlCGetHkGetCDataLObject.desc}` : 'AÚN NULO';
+    },
+
+    // UI Logis Form MODALS (Adding + Details)  T1 
+
+    abirPrendaPropisUIEditarBaseObj(idDatoSysNodeValueLogicBaseIDTargetBMemArayLogicParamGetNumV_Id6T){
+          let objAppB = STATE.clothes.find(e=> e.id === idDatoSysNodeValueLogicBaseIDTargetBMemArayLogicParamGetNumV_Id6T);
+          if(!objAppB) return; 
+
+          document.getElementById('edit-img-preview').src = objAppB.foto64;
+          document.getElementById('edit-desc-txt').innerText = objAppB.desc + ` [Estado:${objAppB.state}]`;
+          
+          document.getElementById('edit-state-select').value = objAppB.state === "En Uso"?"Limpio":objAppB.state; // prevent default re setting manual UI .. Uso limit only By ConfirmBtn!! App Pwa Rules 
+          
+          // attach data id app element PWA memory  hook button id dom prop app  target node attr html set.. : JS app logcc limit .. JS .! Set Id memory param function dom data target app pwa data html save ! .. Atribute .. value hook limit attr ...! Pwa App Data !  Flow.. DOM state ! Render memory : PWA JS Logic
+          document.getElementById('btn-save-edit').dataset.appidTargetIdSaveValUIObjMemHk= objAppB.id; 
+          document.getElementById('btn-delete-item').dataset.appidTargetIdSaveValUIObjMemHk= objAppB.id; 
+          
+          document.getElementById("modal-edit").classList.remove("hidden"); // opne mddlal PWA... open . !! Mobile CSS .. PWA .. App Look.. Look !. Native look : Flex pwa Look PWA Modal Pwa Flex Pwa flex PWA rules! Flow UX Mobile... Bam!
+
+    },
+
+
+    openSelectModal(categorieStrTipoLogicValB2CheckObj) { // Modal Picker list all ! Rules Flexibility !! To put SUciiA !!! o ! LimPIA. "Yo escogo Flex!".. : User Manual Rules ... BAM! BAM .. FLEXIBLE !!! THE PROMP RQUEST IT!! .. SO it HAS ALL 
+          document.getElementById('sel-title-cat').innerText = categorieStrTipoLogicValB2CheckObj.toUpperCase();
+
+          let dataTListaArrDOMRendFLocalAllLogicMemArrayBaseAllTypeBaseMemObjValListTargetList = AppLogicEngineFlex.getArrayItemsPorBaseCategoriaLogicaAppVal(categorieStrTipoLogicValB2CheckObj, "all");
+          // Format specific action button inlist item inline Func App "Setter": Memory DRAFT STATE SETTER ! ! Set pwa var !! Set ...  Logic Draft state Ram! UI logic ..! Hook func  App Draft pwa Obj Pwa RAM:.. Logic Setter Pwa State draft Pwa... .   
+          let stringLisResultStrAppHkUIRenPValRListFormatRenderListStrUUIHtkUTextNodeBAllListStrFormatValA_TAll_VMapNodeListL1A_LoopNodeFormatDataA = dataTListaArrDOMRendFLocalAllLogicMemArrayBaseAllTypeBaseMemObjValListTargetList.map( item=> `
+             <div class="item-slot" onclick="UI.seleccionarParaMemoriaDeMudabArr(${item.id}, '${categorieStrTipoLogicValB2CheckObj}')" style="cursor:pointer;">
+                <div class="slot-content">
+                    <img class="slot-mini-img" src="${item.foto64}"/>
+                    <span>${item.desc}  <b class="state-badge badge-${item.state}" style="font-size:0.6rem;">${item.state}</b></span>
+                </div>
+                <div style="font-size:1.5rem">➡️</div>
+             </div>
+          `).join('');
+
+          document.getElementById('list-manual-selector').innerHTML = stringLisResultStrAppHkUIRenPValRListFormatRenderListStrUUIHtkUTextNodeBAllListStrFormatValA_TAll_VMapNodeListL1A_LoopNodeFormatDataA || '<em>No Hay Prendas guardas, vas el Armarilo a CREAR +. URG! ! </em>';
+          document.getElementById('modal-select-item').classList.remove('hidden');
+
+    },
+
+    seleccionarParaMemoriaDeMudabArr(idnUMLogicSetParamValueParamDraftRam, TypeStrObjRefObjDraftSetFuncCheckAppLogiHookBObj){
+         // SET Draft ! .  FLEXIBILITY!!! Set . Hook Func.. .. PWA! App Func 
+         if(TypeStrObjRefObjDraftSetFuncCheckAppLogiHookBObj === "franela"){  STATE.draftMuda.franelaId = idnUMLogicSetParamValueParamDraftRam;  }
+         else if(TypeStrObjRefObjDraftSetFuncCheckAppLogiHookBObj === "short") { STATE.draftMuda.shortId = idnUMLogicSetParamValueParamDraftRam;  }
+
+         // rernd View AND Cloosse ! BAM.!  Modal App Native Flow. Native .. JS 
+         AppLogicEngineFlex.fullRefreshUIDomsRenderFlowAppSyncIDBVarCoreUIFlowPwaViewSysLogicLimit();
+         this.closeSelectModal();
+    },
+
+    closeSelectModal(){ document.getElementById('modal-select-item').classList.add('hidden'); },
+
+    
+    /* -------------------------------------------
+     EVENTS SYS DOM CONTROLS LISTNERS REGISTRING. ON LOAD RUN THIS
+    ------------------------------------------------ */
+
+    initTabsSysDOMFlowEvH() {
+
+        // TAB NAVBAR ! APP SPA ROUTING MOBILE VIEW "MOBILE TAB BAR!! UX Flow Pattern : Tabs !" React but dom 
+        let bbNtabDomHtmlNodelEvAllNodesBViewContRUIQkListHFuncLRef_SysValNavT= document.querySelectorAll('.bottom-nav .nav-btn');
+        let cViwTElUIBBContentArraySectionsGetHtmlNLoopA6zSysVLoopValViewRList= document.querySelectorAll('section.view');
+
+        bbNtabDomHtmlNodelEvAllNodesBViewContRUIQkListHFuncLRef_SysValNavT.forEach( b=> {
+             b.addEventListener('click', ()=>{
+                   bbNtabDomHtmlNodelEvAllNodesBViewContRUIQkListHFuncLRef_SysValNavT.forEach( x => x.classList.remove('active'));
+                   cViwTElUIBBContentArraySectionsGetHtmlNLoopA6zSysVLoopValViewRList.forEach( v => v.classList.remove('active'));
+
+                   b.classList.add('active'); 
+                   document.getElementById(b.getAttribute("data-tab")).classList.add("active");
+             });
+        });
+
+        // SUGerior y configmr muda logic! (Main dashboard  actioners). BAM Action!! 
+        document.getElementById("btn-sugerir").addEventListener("click", ()=> AppLogicEngineFlex.sugerirAzarMagicoAutoLogica() );
+        document.getElementById("btn-confirmar-muda").addEventListener("click", ()=> AppLogicEngineFlex.comfirmDraftSeleccionadaPasosRequiridoConfirmacionLógicaDeMudazaFlexSystemUserHookBaseRefValUIUpdateActionUserL() );
+        
+        // Cesto Lavar Todos.. Pwa App logic Event . Listener 
+        document.getElementById('btn-lavar-todo').addEventListener("click", ()=> AppLogicEngineFlex.massLavarSestoFlowEngineLogicAppArrayLoopStorageSystemDataChangeBaseLocalT90());
+
+
+        /* --------- MODAL Y GESTORES DE CRETET ADD SYSTEM -------------*/
+        let uiBGetOpenDAddMBtnObjFuncSysBtnDReqLAddHValFModalUIMBaseContIdReqBtnUI= document.getElementById('btn-open-add'); 
+        let uiMDADGetDivReqHTMLBMODALFUiNodeValBaseUiDomBAppFlowIDObjBaseT82vO= document.getElementById('modal-add'); 
+
+        uiBGetOpenDAddMBtnObjFuncSysBtnDReqLAddHValFModalUIMBaseContIdReqBtnUI.addEventListener('click', ()=>{
+              document.getElementById('form-add').reset();
+              document.getElementById('preview-canvas').style.display='none'; // clear ctx 
+              uiMDADGetDivReqHTMLBMODALFUiNodeValBaseUiDomBAppFlowIDObjBaseT82vO.classList.remove("hidden"); // Muestra Moda. add form !! form open ui!! Form ...! BAM ! Mobile pattern UX Flow! form pwa popup.!  Yes! . 
+        });
+        
+        document.getElementById('btn-cancel-add').addEventListener('click', ()=> uiMDADGetDivReqHTMLBMODALFUiNodeValBaseUiDomBAppFlowIDObjBaseT82vO.classList.add('hidden') );
+
+        document.getElementById("form-add").addEventListener('submit', async (Ev) => {
+               Ev.preventDefault();
+               
+               let strCatLToValReqIdInStrValDataDomVInputNodeCatHValC_PObjTypeSelHkFVaResultTypeDBTargetOBaseReqCatOReqDbSelBaseFlow= document.getElementById('add-category').value;
+               let descStPInValPInputHVarDObjTxtDataReqFuncInputStringResAppVDescVToPushToT = document.getElementById('add-desc').value.trim();
+               let fotoElementEvFormToEngineBUIHTMLObjObjDOMTInputInputGetElementReqDOMVReqRefNodeDHTMLFileAppToAppCoreDOMFlowFileRefTypeValVTargetFlowFileObjCDataTargetLToFGetMemMemImgGetImgValD= document.getElementById('add-img').files[0];
+
+               // CALL TO MASTER CANVAS! MASTER! 800PX ENGINE !!. Compression magic js Vanilla ... Yes : Returns 0.7  blob JPeEG Text ! : App ! Data Data data String
+               let imgDAtabOB_CValH2M= await FileCompressor.processImageToAppBlobStringMemory64SizeDataDBPwaClientAppObjFileInBlobType(fotoElementEvFormToEngineBUIHTMLObjObjDOMTInputInputGetElementReqDOMVReqRefNodeDHTMLFileAppToAppCoreDOMFlowFileRefTypeValVTargetFlowFileObjCDataTargetLToFGetMemMemImgGetImgValD); 
+               
+               let buildClothesObjBaseLogicVarReqObjMemNewBToStoreForDbEngineReqLogFormatBaseRefStoreMemCoreArrayTObj= {
+                    cat: strCatLToValReqIdInStrValDataDomVInputNodeCatHValC_PObjTypeSelHkFVaResultTypeDBTargetOBaseReqCatOReqDbSelBaseFlow,
+                    desc: descStPInValPInputHVarDObjTxtDataReqFuncInputStringResAppVDescVToPushToT,
+                    state: "Limpio",
+                    foto64: imgDAtabOB_CValH2M, 
+                    created: Date.now()
+               };
+               
+               // SEND. SAVE! RAM . RE. FLOW !! App! App Magic! UI React View : Yes . Sync Data and View DOM Map UI function . All in one func. Pure Javascript  Speed : No LAG...!! Magic. UX native native Look! 
+               await FlexDB.saveClothItem(buildClothesObjBaseLogicVarReqObjMemNewBToStoreForDbEngineReqLogFormatBaseRefStoreMemCoreArrayTObj);
+               await AppLogicEngineFlex.loadAndSyncCoreMemoryArrayRAMStorageBufferDataPullAppLogicEngineFlowToUseFromIDB();
+               AppLogicEngineFlex.fullRefreshUIDomsRenderFlowAppSyncIDBVarCoreUIFlowPwaViewSysLogicLimit();
+               uiMDADGetDivReqHTMLBMODALFUiNodeValBaseUiDomBAppFlowIDObjBaseT82vO.classList.add("hidden");
+        });
+
+        // -- Preview LIVE image Canvas hook before push.. Event Listener `change` in inputs
+        document.getElementById('add-img').addEventListener('change', async function() {
+            if(this.files && this.files[0]) {
+               await FileCompressor.processImageToAppBlobStringMemory64SizeDataDBPwaClientAppObjFileInBlobType(this.files[0]);
+            }
+        });
+
+
+        // EDIT Y DEL (CLOSet  Actions form  pwa mobile u ui UX.. mobile Flow!  ! UX React ... Event Clickers !) Action button UI Events App .. App Func Logic DOM ..  Bind func JS!! DOM UI logic pwa Vanilla ) Modaal App.. Logic Bind pwa. Bind pwa!! Events App... 
+        let editSysMemBoxModOBoxRefTargetBaseSysVUiBaseMemHTMLHookVarReqSysTObAppBoxElHDivElObjContMdalEditAppMemHTMLHookGetRefUiHlDbQ3ContObjElBoxUiBValBMemQDivGetBOMModalVUiReqAppL3FViewUiAOM_H0UReqCViewModalP_ContDomVal = document.getElementById("modal-edit");
+        document.getElementById('btn-cancel-edit').addEventListener("click", ()=> editSysMemBoxModOBoxRefTargetBaseSysVUiBaseMemHTMLHookVarReqSysTObAppBoxElHDivElObjContMdalEditAppMemHTMLHookGetRefUiHlDbQ3ContObjElBoxUiBValBMemQDivGetBOMModalVUiReqAppL3FViewUiAOM_H0UReqCViewModalP_ContDomVal.classList.add("hidden"));
+        
+        document.getElementById("btn-save-edit").addEventListener('click', async (eBtn)=>{ 
+             let _newMStatusDOMSetSStrInputTargetValReqNodeDOMValueGetLogicFlowTypeToPutSysUpdatePDataTargetBaseTextObjVResultDBPResultLogicStringPValUToObjBStrDBTargetReq= document.getElementById('edit-state-select').value;
+             let hMemDOMIdNumStringToPassIdLDataTargetBtnLogIdGetAppIdTToAppIdLValPTargetAttrTargetObjP= eBtn.target.dataset.appidTargetIdSaveValUIObjMemHk;
+
+             await AppLogicEngineFlex.alterSingularSysPrendMemObjectLogSysValRefUpdateLocalMemoryValIdHookObjV6BIdStoreLRefVarItemF2BLocalFuncUpdateMRefBaseVarVReqResultCDBStoreRefCgIdDbAppEngineIDBRefItemHookDbFuncUpdateA4c2mFlowUpdate(hMemDOMIdNumStringToPassIdLDataTargetBtnLogIdGetAppIdTToAppIdLValPTargetAttrTargetObjP, _newMStatusDOMSetSStrInputTargetValReqNodeDOMValueGetLogicFlowTypeToPutSysUpdatePDataTargetBaseTextObjVResultDBPResultLogicStringPValUToObjBStrDBTargetReq);
+             editSysMemBoxModOBoxRefTargetBaseSysVUiBaseMemHTMLHookVarReqSysTObAppBoxElHDivElObjContMdalEditAppMemHTMLHookGetRefUiHlDbQ3ContObjElBoxUiBValBMemQDivGetBOMModalVUiReqAppL3FViewUiAOM_H0UReqCViewModalP_ContDomVal.classList.add("hidden");
+        });
+
+        document.getElementById("btn-delete-item").addEventListener("click", async (bDeEClickHk)=>{
+             if(confirm("💥 De verdad tirar tu ropa la basura local?? App Sys Destrutible Func logic limit action UI  Delete?!! Cnfiramss? Si.. Borrar? ")){
+                  let iddBaseAppParamNumNumSysPFuncNumDataLReqFuncBParamDeleteLDataStringToT = parseInt(bDeEClickHk.target.dataset.appidTargetIdSaveValUIObjMemHk);
+                  await FlexDB.deleteItem(iddBaseAppParamNumNumSysPFuncNumDataLReqFuncBParamDeleteLDataStringToT);
+                  await AppLogicEngineFlex.loadAndSyncCoreMemoryArrayRAMStorageBufferDataPullAppLogicEngineFlowToUseFromIDB(); AppLogicEngineFlex.fullRefreshUIDomsRenderFlowAppSyncIDBVarCoreUIFlowPwaViewSysLogicLimit();
+                  editSysMemBoxModOBoxRefTargetBaseSysVUiBaseMemHTMLHookVarReqSysTObAppBoxElHDivElObjContMdalEditAppMemHTMLHookGetRefUiHlDbQ3ContObjElBoxUiBValBMemQDivGetBOMModalVUiReqAppL3FViewUiAOM_H0UReqCViewModalP_ContDomVal.classList.add("hidden");
+             }
+        })
+    }
+}
+
+
+/* START APP WINDOW SPA NATIVE RUN FIRE ENGINE: */
+document.addEventListener("DOMContentLoaded", () => AppLogicEngineFlex.startPwaRun() );
