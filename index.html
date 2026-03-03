@@ -3,106 +3,104 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>My Daily Outfit 📱👕</title>
+    <title>My Daily Outfit</title>
     <link rel="stylesheet" href="style.css">
-    <meta name="theme-color" content="#121212">
+    <!-- Habilitación de apariencia App / PWA Pura Mobile First -->
+    <meta name="theme-color" content="#121e26">
+    <meta name="apple-mobile-web-app-capable" content="yes">
 </head>
 <body>
+    <header class="top-header">
+        <h1>My Daily Outfit <span id="clock-display" class="clock">00:00</span></h1>
+    </header>
 
-    <!-- Container Central Móvil (Optimizado) -->
-    <div id="app-container">
-        <!-- Notificación de Urgencia Laundry. (Oculto por defecto) -->
-        <div id="laundry-alert" class="hidden">
+    <main class="app-container">
+        
+        <!-- ALERTAS DE LAVANDERIA / ALERTAS 6PM -->
+        <div id="urgent-alert" class="urgent-alert hidden">
             ⚠️ ¡Toca lavar mañana temprano! Te quedas sin ropa para las 6:00 PM.
         </div>
+        
+        <div id="modal-6pm" class="modal-6pm hidden">
+            <h3>⏰ ¡Ya son pasadas las 6:00 PM!</h3>
+            <p>Tu muda del día anterior ha sido arrojada al cesto de sucios.</p>
+            <button id="btn-close-6pm" class="btn btn-primary">Seleccionar Nuevo Outfit</button>
+        </div>
 
-        <!-- 1. Pestaña de Dashboard -->
-        <main id="tab-dashboard" class="view active">
-            <header>
-                <h1>Hola. Tu ropa para hoy 📆</h1>
-                <p id="dashboard-clock">00:00:00</p>
-            </header>
-
-            <div class="current-outfit">
-                <div class="empty-state hidden" id="prompt-elegir-ropa">
-                    <h3>¡Tu outfit de ayer ya fue a lavar!</h3>
-                    <p>Necesitas escoger qué ponerte hasta mañana a las 6:00 PM.</p>
-                </div>
-                
-                <div class="outfit-display" id="outfit-display">
-                    <div class="clothing-slot">
-                        <span class="badge badge-cyan">Franela Actual</span>
-                        <div id="display-franela" class="slot-image">👚</div>
-                    </div>
-                    <div class="clothing-slot">
-                        <span class="badge badge-cyan">Short Actual</span>
-                        <div id="display-short" class="slot-image">🩳</div>
-                    </div>
-                </div>
-            </div>
-
-            <button id="btn-suggest" class="neon-btn primary-btn btn-massive">
-                ✨ SUGERIR OUTFIT ✨
-            </button>
-        </main>
-
-        <!-- 2. Pestaña de Inventario/Armario -->
-        <main id="tab-armario" class="view hidden">
-            <header>
-                <h1>Tu Inventario 👕🩳</h1>
-            </header>
+        <!-- 1. DASHBOARD / HOY -->
+        <section id="view-dashboard" class="view active">
+            <h2>🌙 Outfit En Uso</h2>
+            <p class="subtitle">Este outfit pasará automáticamente al cesto hoy (o mañana) a las 6:00 PM.</p>
             
-            <div class="upload-section glass-card">
-                <h3>Añadir Prenda Nueva</h3>
-                <div class="upload-controls">
-                    <label for="img-upload" class="neon-btn success-btn">Tomar Foto 📸</label>
-                    <!-- Captura forzada usando API web o selección base móvil -->
-                    <input type="file" id="img-upload" accept="image/*" class="hidden">
-                    <select id="type-select">
-                        <option value="franela">Es una Franela</option>
-                        <option value="short">Es un Short</option>
+            <div class="current-outfit-box" id="current-outfit">
+                <!-- Se llena mediante JS -->
+                <p>Cargando outfit...</p>
+            </div>
+            
+            <button class="btn btn-primary w-100 neon-blue-glow mb-main" id="btn-suggest">✨ Sugerir Outfit Aleatorio</button>
+            <div class="inventory-summary" id="dash-summary">
+                Mudas limpias listas para el combate: <strong id="clean-sets-count">-</strong>
+            </div>
+        </section>
+
+        <!-- 2. ARMARIO / INVENTARIO -->
+        <section id="view-armario" class="view hidden">
+            <h2>👕 Tu Inventario</h2>
+            <form id="form-add" class="card form-add">
+                <h3>Añadir Nueva Prenda</h3>
+                <div class="input-group">
+                    <select id="input-type" required>
+                        <option value="franela">Franela / Camisa</option>
+                        <option value="short">Pantalón Corto (Short)</option>
                     </select>
                 </div>
+                <div class="input-group desc-color-group">
+                    <input type="text" id="input-desc" placeholder="Ej. Franela Azul Desgastada..." required>
+                    <input type="color" id="input-color" value="#0084FF" title="Color dominante">
+                </div>
+                <button type="submit" class="btn btn-outline w-100">+ Añadir Prenda Limpia</button>
+            </form>
+
+            <h3 class="mt-main">Todas las prendas Limpias</h3>
+            <div class="inventory-grid" id="clean-list">
+                <!-- Se inyecta por JS -->
+            </div>
+        </section>
+
+        <!-- 3. LAVANDERIA -->
+        <section id="view-lavanderia" class="view hidden">
+            <div class="laundry-header">
+                <h2>🧺 Cesto de Ropa Sucia</h2>
+                <button class="btn btn-primary neon-green-glow" id="btn-wash-all">💦 Lavar Cesto Completo</button>
+            </div>
+            
+            <div class="inventory-grid mb-main" id="dirty-list">
+                <!-- Prendas sucias por JS -->
             </div>
 
-            <!-- Listado tipo grid interactivo -->
-            <div class="grid-layout" id="clothes-grid">
-               <!-- Inyectado vía JS -->
+            <hr>
+            <h2>🔧 Taller de Reparación</h2>
+            <div class="inventory-grid" id="repair-list">
+                <!-- Prendas a reparación -->
             </div>
-        </main>
+        </section>
+    </main>
 
-        <!-- 3. Pestaña de Lavandería -->
-        <main id="tab-laundry" class="view hidden">
-            <header>
-                <h1>Lavandería 🧺</h1>
-            </header>
-
-            <div class="basket-status glass-card text-center">
-                <h3>Cesto de Ropa Sucia</h3>
-                <p>Mudas sucias esperando lavado</p>
-                <button id="btn-wash-all" class="neon-btn info-btn btn-massive" style="margin-top: 20px;">
-                    💦 LAVAR TODO EL CESTO 💦
-                </button>
-            </div>
-
-            <div class="grid-layout" id="laundry-grid">
-                 <!-- Inyectado vía JS (Sólo Ropa en estado Sucio) -->
-            </div>
-        </main>
-
-        <!-- Navbar PWA Fixed At Bottom -->
-        <nav class="bottom-nav">
-            <button class="nav-item active" data-target="tab-dashboard">
-                <span class="nav-icon">📅</span> Hoy
-            </button>
-            <button class="nav-item" data-target="tab-armario">
-                <span class="nav-icon">👕</span> Armario
-            </button>
-            <button class="nav-item" data-target="tab-laundry">
-                <span class="nav-icon">🧺</span> Lavar
-            </button>
-        </nav>
-    </div>
+    <!-- NAVEGACIÓN BOTTOM TAB BAR -->
+    <nav class="bottom-nav">
+        <div class="nav-item active" data-target="view-dashboard">
+            <span>📅</span>
+            <small>Hoy</small>
+        </div>
+        <div class="nav-item" data-target="view-armario">
+            <span>👕</span>
+            <small>Armario</small>
+        </div>
+        <div class="nav-item" data-target="view-lavanderia">
+            <span>🧺</span>
+            <small>Lavandería</small>
+        </div>
+    </nav>
 
     <script src="app.js"></script>
 </body>
