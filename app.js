@@ -1,366 +1,363 @@
-/* ==============================================================
-   MY DAILY OUTFIT JS - CORE APP LOGIC & INDEXEDDB MANAGEMENT
-   ============================================================== */
+/* =======================================================
+ * Lógica Completa PWA VanillaJS - My Daily Outfit 
+ * Full Stack Local Logic via HTML5 IndexedDB Storage
+ * ======================================================= */
 
-/**
- * DATABASE INITIALIZATION: INDEXED-DB
- * IndexedDB usa un formato fuertemente estructurado transaccional que permite guardado asíncrono
- * infinito. A diferencia del local storage que bloquearía tras subidas masivas de datos en B64.
- * Aquí creamos una abstracción bajo promesas.
- */
-const DB_NAME = 'DailyOutfitDB';
-const DB_VERSION = 1;
-
-function openDB() {
-    return new Promise((resolve, reject) => {
-        // Abriendo conexión para la instancia de app DB
-        const req = indexedDB.open(DB_NAME, DB_VERSION);
-        
-        req.onupgradeneeded = (e) => {
-            const db = e.target.result;
-            // Al ser el "v1", generamos los Stores. 'clothes' será la tabla master de Ropa.
-            if (!db.objectStoreNames.contains('clothes')) {
-                // Autoincrement garantiza id's serializados perfectos cada subida de foto.
-                const store = db.createObjectStore('clothes', { keyPath: 'id', autoIncrement: true });
-                // Generar índices auxiliares para no filtrar "a mano" por miles de prendas posibles luego.
-                store.createIndex('type', 'type', { unique: false });
-                store.createIndex('state', 'state', { unique: false }); 
-            }
-            if (!db.objectStoreNames.contains('app_state')) {
-                db.createObjectStore('app_state', { keyPath: 'id' });
-            }
-        };
-
-        req.onsuccess = (e) => resolve(e.target.result);
-        req.onerror = (e) => reject("DB Open Error: ", e);
-    });
-}
-
-/* ============================ Funciones CRUD ============================ */
-async function dbTransact(storeName, mode, callback) {
-    const db = await openDB();
-    return new Promise((resolve, reject) => {
-        const tx = db.transaction(storeName, mode);
-        const store = tx.objectStore(storeName);
-        let request;
-        try { request = callback(store); } catch(err) { reject(err); }
-        
-        tx.oncomplete = () => resolve(request?.result);
-        tx.onerror = (e) => reject(e);
-    });
-}
-
-// Devuelve todo según storeName y callback request. Retorna un arreglo nativo IndexedDB o item por defecto
-async function getAppState() {
-    const data = await dbTransact('app_state', 'readonly', s => s.get('current'));
-    return data || { id: 'current', outfitExpiringOn: null, fId: null, sId: null };
-}
-
-async function saveAppState(stateObj) {
-    return await dbTransact('app_state', 'readwrite', s => s.put(stateObj));
-}
-
-async function saveClothingItem(type, compressedImageStrBase64) {
-    const obj = {
-        type: type, // "franela" o "short"
-        state: 'limpio', // Por defecto cuando alguien la sube nueva del rack es "limpia" disponible
-        image: compressedImageStrBase64,
-        dateAdded: Date.now()
-    };
-    return await dbTransact('clothes', 'readwrite', s => s.add(obj));
-}
-
-async function updateClothState(id, newState) {
-    const db = await openDB();
-    return new Promise((resolve, reject) => {
-        const tx = db.transaction('clothes', 'readwrite');
-        const store = tx.objectStore('clothes');
-        const req = store.get(id);
-        req.onsuccess = () => {
-            let data = req.result;
-            if(!data) {resolve(); return;}
-            data.state = newState;
-            const upReq = store.put(data);
-            upReq.onsuccess = resolve;
-            upReq.onerror = reject;
-        };
-    });
-}
-
-async function getClothes() { return await dbTransact('clothes', 'readonly', s => s.getAll()); }
-async function getClothById(id) { if(!id)return null; return await dbTransact('clothes', 'readonly', s => s.get(id)); }
-
-
-/* =========================================================================
-   LÓGICA CORE DE NEGOCIO: VALIDACIÓN A LAS 18:00 & ESTADOS DE MUDAS (CYCLE)
-   ========================================================================= */
-
-// Calcula cuándo ocurrirán las próximas "6:00 PM" basándose en la fecha real 
-// del Outfit. Un outfit debe "envejecer" y caducar mañana, salvo si fue seteado recién un 15:00 del mismo día 
-// o después, el cual aguanta natural a mañana al día completo hasta ser tarde noche.
-function calcNextExpirationRule() {
-    const now = new Date();
-    const next18Time = new Date();
-    // ¿Puesto después de las 6PM O puesto en cualquier transcurso normal antes del cambio horario?
-    // Exigencia del Prompt: "...debe pasar a sucio al DIA SIGUIENTE a las 6:00 PM."
-    // Es decir: Garantiza caducidad obligada en Tomorrow @ 18:00 h
-    next18Time.setDate(now.getDate() + 1);
-    next18Time.setHours(18, 0, 0, 0); // Exactamente las 18:00hrs al día de mañana
-    return next18Time.getTime();
-}
-
-async function routineCycleCheck() {
-    const state = await getAppState();
-    const nowTimestamp = Date.now();
-    
-    // Mostramos reloj simple visible en PWA Top UI
-    document.getElementById('dashboard-clock').innerText = new Date().toLocaleTimeString('es-US', {hour: '2-digit', minute:'2-digit'});
-
-    if (state.outfitExpiringOn !== null) {
-        // Chequeo estricto del Lifecycle limit. 
-        if (nowTimestamp >= state.outfitExpiringOn) {
-            // El tiempo llegó o es mas tarde => Mudar 'En uso' de franelas pasadas y pasarlos a sucio permanentemente.
-            console.log("🔥 CICLO 18:00HRS SUPERADO: Caducando MUDAS y pidiendo selección en Pantalla.");
-            
-            if (state.fId) await updateClothState(state.fId, 'sucio');
-            if (state.sId) await updateClothState(state.sId, 'sucio');
-
-            state.fId = null; 
-            state.sId = null;
-            state.outfitExpiringOn = null; // Reiniciando estado expiratorio forzoso temporalmente vacante 
-            await saveAppState(state);
-
-            // Refrescar Pistas PWA en interfaz activa visualmente! 
-            await runUIUpdateCycle();
-        }
-    }
-}
-
-
-/* ============================================================
-   CANVAS - REDUCTOR DE IMAGENES (<100KB, Rescaling Max-800, JPEG 70%) 
-   ============================================================ */
-async function processCanvasImageBase64(fileObject) {
-    return new Promise((resolve) => {
-        const fr = new FileReader();
-        fr.readAsDataURL(fileObject);
-        fr.onload = (ev) => {
-            const tempImg = new Image();
-            tempImg.src = ev.target.result;
-            tempImg.onload = () => {
-                const cvs = document.createElement('canvas');
-                let W = tempImg.width; 
-                let H = tempImg.height;
-
-                // Logica Resizer Ratio a 800 pixeles de Ancho permitidos máximo por App Specification Limitado 
-                const maxWidthParam = 800;
-                if (W > maxWidthParam) {
-                    H = H * (maxWidthParam / W); // Calculo proporcional de aspecto H:W para que mantenga Ratio y No Deformaciones Canvas Nativa CSS Canvas Scale App .
-                    W = maxWidthParam; 
-                }
-
-                cvs.width = W; 
-                cvs.height = H;
-                const canvasCtxRenderContextApiJSHTML5ObjectPaintScaleContextNode2D = cvs.getContext('2d'); 
-                canvasCtxRenderContextApiJSHTML5ObjectPaintScaleContextNode2D.drawImage(tempImg, 0, 0, W, H);
-                
-                // Aplicacion Extrema HTML5 - Comprimiendo JPG de Base API
-                const b64DataReadyLimitCompressionHTMLJSNodeExportOutputOutputNodeCanvasResultSizeB64FormatRenderStringValueResultParamStringOutputFinalVariable= cvs.toDataURL('image/jpeg', 0.7);
-                resolve(b64DataReadyLimitCompressionHTMLJSNodeExportOutputOutputNodeCanvasResultSizeB64FormatRenderStringValueResultParamStringOutputFinalVariable);
-            }
-        };
-    });
-}
-
-
-/* ==============================================================
-   LOGICAS COMPUESTAS: SUGERENCIAS ALERTAS Y UPDATE DEL RENDER
-   ============================================================== */
-
-async function assignRandomSuggestOutfitRoutinePWAEventButtonEventFire() {
-    let clothesAvailableArrayNowDbQueryFetchAllObjectFetchRawReturnCallObjectJSResultValuesObjValuesQueryRetReturnObjArrayResultsForStateCountObjectRetDBValuesFetchNowResReturnParamOutputResStateReturnVarArrayObjectObjResultArrayDb= await getClothes();
-
-    // Filtros de las matrices. ¿Disponibilidad real Array Filters (Limpias y segregeadas franela -vs- short ) ? 
-    let flinmpia = clothesAvailableArrayNowDbQueryFetchAllObjectFetchRawReturnCallObjectJSResultValuesObjValuesQueryRetReturnObjArrayResultsForStateCountObjectRetDBValuesFetchNowResReturnParamOutputResStateReturnVarArrayObjectObjResultArrayDb.filter(c => c.state === 'limpio' && c.type === 'franela');
-    let slimpia = clothesAvailableArrayNowDbQueryFetchAllObjectFetchRawReturnCallObjectJSResultValuesObjValuesQueryRetReturnObjArrayResultsForStateCountObjectRetDBValuesFetchNowResReturnParamOutputResStateReturnVarArrayObjectObjResultArrayDb.filter(c => c.state === 'limpio' && c.type === 'short');
-    
-    if (flinmpia.length === 0 || slimpia.length === 0) {
-        alert("¡Alto ahì! Te falta inventario 😱. O no tienes Franelas limpias, O no tienes Shorts."); 
-        return; 
-    }
-    
-    let stAppInstanceRefDataModModResultInstanceContextValueVal = await getAppState();
-
-    // "Pagar" ciclo previo revirtiendo un outfit manualmente sustituible temporal y volverlas limpio al instante si se reemplazaron "MÁS PRONTO que su Expiración por Manual Trigger Refresh o Regusto Estético Personal. (Permite Re-roller naturalidad)" . 
-    if (stAppInstanceRefDataModModResultInstanceContextValueVal.fId) await updateClothState(stAppInstanceRefDataModModResultInstanceContextValueVal.fId, 'limpio');
-    if (stAppInstanceRefDataModModResultInstanceContextValueVal.sId) await updateClothState(stAppInstanceRefDataModModResultInstanceContextValueVal.sId, 'limpio');
-
-    const randIdFranSelectResultIndexMathIntRandomValTargetFinalObjectReturnJSHTMLIdDBItemIndex= flinmpia[Math.floor(Math.random()*flinmpia.length)];
-    const randIdShortSelectResultIndexMathIntRandomValTargetFinalObjectReturnJSHTMLIdDBItemIndex = slimpia[Math.floor(Math.random()*slimpia.length)];
-
-    await updateClothState(randIdFranSelectResultIndexMathIntRandomValTargetFinalObjectReturnJSHTMLIdDBItemIndex.id, 'en_uso');
-    await updateClothState(randIdShortSelectResultIndexMathIntRandomValTargetFinalObjectReturnJSHTMLIdDBItemIndex.id, 'en_uso');
-
-    stAppInstanceRefDataModModResultInstanceContextValueVal.fId = randIdFranSelectResultIndexMathIntRandomValTargetFinalObjectReturnJSHTMLIdDBItemIndex.id; 
-    stAppInstanceRefDataModModResultInstanceContextValueVal.sId = randIdShortSelectResultIndexMathIntRandomValTargetFinalObjectReturnJSHTMLIdDBItemIndex.id;
-    // Si la sugerencia fue clickeada se instaura legalidad horario nueva expiratoria oficial calculada a partir de ya! "MUDANZA 24H RULES: Aceptar Mudanza => A LAS 1800 de MANAÑA EXPLOTA a Dirty!".
-    stAppInstanceRefDataModModResultInstanceContextValueVal.outfitExpiringOn = calcNextExpirationRule(); 
-    
-    await saveAppState(stAppInstanceRefDataModModResultInstanceContextValueVal); 
-    await runUIUpdateCycle(); // Repinta SPA
-}
-
-
-async function alertStateRuleSystemVerifyGlobalCheckForRenderLogicAndWarningsUIRulesForInventoryValuesAndWarningAppLimitWarningThreshold(){
-   let appTotalC = await getClothes();
-   let totalAvailableF=0, totalAvailableS=0;
-   
-   appTotalC.forEach(cc=> {
-      if(cc.state === 'limpio') { cc.type === 'franela'? totalAvailableF++ : totalAvailableS++ ; } 
-   });
-
-   // ALERTA LAVANDERIA - SI Ocurre un Min Limpios mudas integras calculadas limitadas <2 Warning!!  
-   const setsOfCompletedRemainingDressesLimitNumberWarningResultObjectOutAppCheck = Math.min(totalAvailableF, totalAvailableS); 
-   let al = document.getElementById('laundry-alert'); 
-   if(setsOfCompletedRemainingDressesLimitNumberWarningResultObjectOutAppCheck < 2){ al.classList.remove('hidden'); } else { al.classList.add('hidden');}
-}
-
-
-/* ==============================================================
-   SPA RENDER CORE ENGINES PARA TABS: PINTURA ESTRUTURAL DOM DINAMICO HTML  
-   ============================================================== */
-async function runUIUpdateCycle(){
-   // Check system limits laundry (Siempre primero notificar)
-   await alertStateRuleSystemVerifyGlobalCheckForRenderLogicAndWarningsUIRulesForInventoryValuesAndWarningAppLimitWarningThreshold(); 
-
-   let estadoMasterStateAPP= await getAppState(); 
-   const fO = await getClothById(estadoMasterStateAPP.fId);
-   const sO = await getClothById(estadoMasterStateAPP.sId);
-   const invt = await getClothes(); 
-   
-   // TAB-1: RENDER DE HOY "EN USO DASHBOARD CURRENT MUDA": Reconstruyendo Vista Estado DOM Modulo Actual (Current PWA Context Value Result Node DOM JS Result Visual Nodes)
-   if (!fO || !sO) {
-        // En vacante (Ej, Post-18:00hs mudanza a Dirty automático generador empty Prompt View System o primera instalacion): 
-        document.getElementById('outfit-display').classList.add('hidden'); 
-        document.getElementById('prompt-elegir-ropa').classList.remove('hidden');
-   } else {
-        document.getElementById('outfit-display').classList.remove('hidden');
-        document.getElementById('prompt-elegir-ropa').classList.add('hidden');
-        document.getElementById('display-franela').innerHTML = `<img src="${fO.image}" />`;
-        document.getElementById('display-short').innerHTML = `<img src="${sO.image}" />`;
-   }
-
-
-   // TAB-2: GRID ARMARIO DOM PAINT SYSTEM RE RENDER CONSTRUCTOR NODO APPEND 
-   let cGridNodeGridNodeArmariNodeHtmlHtmlElDOM= document.getElementById('clothes-grid'); 
-   cGridNodeGridNodeArmariNodeHtmlHtmlElDOM.innerHTML="";
-   
-   let lanGriDNodEGnODEvASTNodeHtmlElemDomNodesLanundruRefTargetLaundryLaundryListRefLnaLaundryVewListLlistlister= document.getElementById('laundry-grid'); 
-   lanGriDNodEGnODEvASTNodeHtmlElemDomNodesLanundruRefTargetLaundryLaundryListRefLnaLaundryVewListLlistlister.innerHTML="";
-   
-   // Bucle mapeador constructor de Bloques Render para la Grilla Grid Array Display View 
-   invt.slice().reverse().forEach(itm => {  // Reversed para Ultimo Añadido Primera vision. (Sort Array Reverse Time Display Output Values Result UX Experience UI Sort View Target Output)
-       
-       let displayStateTagResultObjTextObjRenderMapResultDOMMapResult = '';
-       let adtlBtnsListRenderObjResHtmlMap = '';
-
-       if (itm.state === 'limpio') { 
-            displayStateTagResultObjTextObjRenderMapResultDOMMapResult = '<span class="state-indicator state-limpio">LIMPIO</span>';
-            adtlBtnsListRenderObjResHtmlMap=`<button class="neon-btn danger-btn small-btn mtBtnRepVacioAppHtmlObjStringFuncEvalArgClickCallFuncStrReturn" onclick="manStateCall(this,${itm.id},'en_reparacion')">🔧 Enviar Reparar</button>`;
-       } 
-       else if (itm.state === 'en_uso'){
-           displayStateTagResultObjTextObjRenderMapResultDOMMapResult = '<span class="state-indicator state-en_uso">USÁNDOSE AHORA</span>'; 
-       }
-       else if(itm.state === 'en_reparacion'){
-            displayStateTagResultObjTextObjRenderMapResultDOMMapResult = '<span class="state-indicator state-en_reparacion">TALLER/SARTORIA</span>'; 
-            // Requerimiento Especifico. Unidades Boton Rescate Retornado A estado Disp. 'Regresado Limpios Rops. ': 
-            adtlBtnsListRenderObjResHtmlMap=`<button class="neon-btn success-btn small-btn strFuncl" style="margin-top:10px" onclick="manStateCall(this, ${itm.id}, 'limpio')">🔙 ¡Ya Regresó!</button>`; 
-       }
-       else if (itm.state === 'sucio') {
-             displayStateTagResultObjTextObjRenderMapResultDOMMapResult = '<span class="state-indicator state-sucio">SUCIO CESTO</span>';
-             // Armado a Lista Secunadria Cesta Tab System Renedr List List Grid Layout Element Obj Obj Display. (Rellenamos Array Cestas Dom!)
-             lanGriDNodEGnODEvASTNodeHtmlElemDomNodesLanundruRefTargetLaundryLaundryListRefLnaLaundryVewListLlistlister.insertAdjacentHTML('beforeend',
-             `
-                 <div class="grid-item">
-                     <div class="item-status-overlay">🔴 Para Lavar</div>
-                     <div class="grid-img"><img src="${itm.image}"></div>
-                 </div>
-             `
-             );
-       }
-       
-       cGridNodeGridNodeArmariNodeHtmlHtmlElDOM.insertAdjacentHTML('beforeend',
-           `
-           <div class="grid-item">
-                <div class="item-status-overlay">${displayStateTagResultObjTextObjRenderMapResultDOMMapResult}</div>
-                <div class="grid-img"> <img src="${itm.image}"> </div>
-                <div class="grid-controls">${adtlBtnsListRenderObjResHtmlMap}</div>
-           </div>
-           `
-       ); 
-   });
-}
-
-
-/* GLOBAL PUBLIC ACCESOR WRAPPER NATIVE JAVASCRIPT GLOBAL NODE LISTENER APP SYSTEM EVENT ACTIONS EVENT HANDLERS TRIGGER RENDER MAP CALLBACK FUNC DOM API METHOD HOOK OBJ REF: 
-*/
-
-// Para OnClicks inyectados directamente vía Texto de Grids de la View a Function Global Map State State State Manager Dispatch Action: "Dispatch" Pattern Vanilla App SPA 
-window.manStateCall = async (btEleHtmlEvTargetRefNodeThisInstanceTargetStrPropJSNodeValueButtonElementStrTargetStrTargetNodeTargetTargetValueFuncArgumentObjectFuncObjHTMLNodeReturnRefHTMLStringEvDOMApiReturnArgEventEvalOnClickRefTargetArgumentStringInt,id, valS)=> {
-      await updateClothState(id, valS);
-      await runUIUpdateCycle();
-}
-
-// BINDEOS INIT APP. Inicializadores Primarios App Boot Sistema Bootstraping Event Loop Callbacks Listeners  : 
-window.onload = async () => {
-   // Arranque Sistema Local Offline Sync DB. Base  y Verificadores de Tiempo Relojes Intervaladores Regla de mudas "60Seg Checker para Mudos Mudas Rules Expiration Expiry"  (Cron job Front!) . 
-   await runUIUpdateCycle();
-   setInterval(routineCycleCheck, 1000 * 60); 
-
-   /* Eventos Interfaz de usuario : TAB SWITCHES DOM View Managers: "Sistema Router Vista Basica"*/ 
-   const nabtsEventListenereDOMQuerySetQuerySelectorQueryQueryApp = document.querySelectorAll('.nav-item');
-   nabtsEventListenereDOMQuerySetQuerySelectorQueryQueryApp.forEach(b => {
-      b.addEventListener('click', () => {
-           nabtsEventListenereDOMQuerySetQuerySelectorQueryQueryApp.forEach(x => x.classList.remove('active'));
-           b.classList.add('active');
-           document.querySelectorAll('.view').forEach(v => v.classList.remove('active')); 
-           document.getElementById(b.getAttribute('data-target')).classList.add('active');
-      });
-   });
-
-   /* Manejadores Acciones Principales View UI Components Core Logic Handler Binding  */
-
-   document.getElementById('btn-suggest').addEventListener('click', assignRandomSuggestOutfitRoutinePWAEventButtonEventFire);
-
-   // Botón Subida de foto Ropa a canvas e injeccion 
-   document.getElementById('img-upload').addEventListener('change', async (evn) => {
-       const filDocDOMEventApiObjectJSParamValOutputOutputInputRef = evn.target.files[0];
-       if(!filDocDOMEventApiObjectJSParamValOutputOutputInputRef)return;
-
-       // Conversiones Y COMPRESS CANVAS RULE : Resize Automatic Ratio 800 W + QUALITY 0.7  == UNDER ~75KBs MAXIMAL!!
-       let resValValTypeDomRefNodeTypeElementTargetDOMTargetSelectorGetGetAppValueReturnObjectReturnDataRenderVal= document.getElementById('type-select').value;
-       const bx6ResultCompressedDataCanvasOutputRenderReadyVarHtmlCanvas= await processCanvasImageBase64(filDocDOMEventApiObjectJSParamValOutputOutputInputRef);
-       
-       await saveClothingItem(resValValTypeDomRefNodeTypeElementTargetDOMTargetSelectorGetGetAppValueReturnObjectReturnDataRenderVal, bx6ResultCompressedDataCanvasOutputRenderReadyVarHtmlCanvas);
-       document.getElementById('img-upload').value=""; // Borrado residual caché HTML Value File Path Seguridad Navegador Chrome Safaries Pwa Safari DOM Limit .
-       await runUIUpdateCycle(); // Repintamos App Armarios Grids App . 
-       
-       // Alertita notoria PWA : Visual cue . 
-       alert("👕 Prenda Salvada Satisfactoriamente. Visita al menú para interactuarla!")
-   });
-
-   // Boton 'LAVAR TODO EL CESTO" , "Moviendo SUCIO=> LIMPIO GLOBAL": 
-   document.getElementById('btn-wash-all').addEventListener('click', async ()=>{
-         let totalClothesArrMapSystemForFilterStateMapActionDOMAppReturnResultsNodeCheckLoopResultsMapNodesObjDbValuesStateAppMapRefAppListVals = await getClothes(); 
-         let checkDirtyAppExistsListDOMResultsCheck = totalClothesArrMapSystemForFilterStateMapActionDOMAppReturnResultsNodeCheckLoopResultsMapNodesObjDbValuesStateAppMapRefAppListVals.filter(xc=>xc.state==='sucio');
-         if(checkDirtyAppExistsListDOMResultsCheck.length===0){
-              alert("No hay ropas que limpiar. Está limpio. 😂"); return; 
-         }
-         // Muteamos masivamente la DB "Transaccional Virtual Indexed For-Looping Mutes All Dirtys!"  
-         for (let drXoObjectMapCheckLoopResultsMapValsResultsListFilterOutFilterResultDBItemRecordLoopAppValsObjOutRenderResultValDBObjItterOfLoopArrResultStateRenderResultDOMRenderValRefFilterResultDbLoopListXItemItResultArrayRecordDB of checkDirtyAppExistsListDOMResultsCheck){
-             await updateClothState(drXoObjectMapCheckLoopResultsMapValsResultsListFilterOutFilterResultDBItemRecordLoopAppValsObjOutRenderResultValDBObjItterOfLoopArrResultStateRenderResultDOMRenderValRefFilterResultDbLoopListXItemItResultArrayRecordDB.id, 'limpio');
-         }
-         alert("🧺 Splash Splash, Limpitos y Frescos Listos al RACK Armarios 🧼"); 
-         await runUIUpdateCycle();
-   });
+const CONSTANTS = {
+    DB_NAME: "OutfitDB",
+    DB_VER: 1,
+    TABLE_CLOTHES: "clothes",    // Donde viviran Franelas y Shorts
+    TABLE_SYSTEM: "sysparams",   // Metadata interna de control de ciclos y 6:00PM limit
+    CYCLE_HOUR: 18 // 18:00 (6 PM) Horario dictado para que prendas ensucien automatiamente
 };
+
+// Data base Default (si está limpio el IDB pre-llenaremos esto usando tus directivas visuales sin imágen real)
+const DEFAULT_INVENTORY = [
+    { type: 'franela', desc: 'Franela Blanca Base', color: '#eeeeee', state: 'Limpio', timestamp: Date.now() },
+    { type: 'franela', desc: 'Franela Urbana Negra', color: '#151515', state: 'Limpio', timestamp: Date.now() },
+    { type: 'franela', desc: 'Polo Deportiva Azul', color: '#0066FF', state: 'Limpio', timestamp: Date.now() },
+    { type: 'short', desc: 'Short Playa Verde', color: '#00cc66', state: 'Limpio', timestamp: Date.now() },
+    { type: 'short', desc: 'Short Running Gris', color: '#444444', state: 'Limpio', timestamp: Date.now() },
+    { type: 'short', desc: 'Jean Roto Short', color: '#3A5A82', state: 'Limpio', timestamp: Date.now() }
+];
+
+/* ---------------------------------------------------
+ *   IndexedDB - Clase/Driver envoltorio Senior LocalStorage killer
+ * --------------------------------------------------- */
+const DBClient = {
+    db: null,
+
+    // Conectar y preparar base (o instalar primera vez)
+    async connect() {
+        return new Promise((resolve, reject) => {
+            const request = indexedDB.open(CONSTANTS.DB_NAME, CONSTANTS.DB_VER);
+            
+            // OnUpgrade se dispara si DB no existe, construímos su arquitectura PWA aquí
+            request.onupgradeneeded = (e) => {
+                const _db = e.target.result;
+                
+                // Store Ropa: { id_incremental, type, desc, color, state: "Limpio|Sucio|En Reparación|En Uso"}
+                if(!_db.objectStoreNames.contains(CONSTANTS.TABLE_CLOTHES)){
+                    let clothesOS = _db.createObjectStore(CONSTANTS.TABLE_CLOTHES, { keyPath: "id", autoIncrement: true });
+                    clothesOS.createIndex("state", "state", { unique: false }); // Indexamos estado para busqueda rápida de Limpios
+                }
+                
+                // Store sistema/params configurables offline como tokens para guardar cuando pasen las 6pm.
+                if(!_db.objectStoreNames.contains(CONSTANTS.TABLE_SYSTEM)){
+                    _db.createObjectStore(CONSTANTS.TABLE_SYSTEM, { keyPath: "key" });
+                }
+            };
+
+            request.onsuccess = (e) => {
+                this.db = e.target.result;
+                resolve();
+            };
+            request.onerror = (e) => reject("DB Connection fallida. El navegador rechaza local storage por settings estrictos.");
+        });
+    },
+
+    // Inyecta defaults (la 'API Post')
+    async putCloth(item) {
+        return new Promise((resolve) => {
+            const trx = this.db.transaction(CONSTANTS.TABLE_CLOTHES, "readwrite");
+            const store = trx.objectStore(CONSTANTS.TABLE_CLOTHES);
+            const req = store.put(item); // insert o replace según key (id autogenerado local)
+            req.onsuccess = () => resolve(req.result); // devuelve newID
+        });
+    },
+    
+    // Lista todas prendas, es rapida, asi es IDB Client Side Vanilla
+    async getAllClothes() {
+        return new Promise((resolve) => {
+            const store = this.db.transaction(CONSTANTS.TABLE_CLOTHES, "readonly").objectStore(CONSTANTS.TABLE_CLOTHES);
+            const request = store.getAll();
+            request.onsuccess = () => resolve(request.result);
+        });
+    },
+
+    async updateMultipleStates(idList, newState) {
+        const clothes = await this.getAllClothes();
+        const trx = this.db.transaction(CONSTANTS.TABLE_CLOTHES, "readwrite");
+        const store = trx.objectStore(CONSTANTS.TABLE_CLOTHES);
+        
+        idList.forEach(id => {
+            const it = clothes.find(c => c.id === id);
+            if (it) {
+                it.state = newState;
+                store.put(it);
+            }
+        });
+        
+        return new Promise(resolve => trx.oncomplete = () => resolve());
+    },
+    
+    // Obten config token global (Promise API Wrapper for internal data sys config local token system...)
+    async getSysVal(keyName) {
+         return new Promise((resolve) => {
+            const req = this.db.transaction(CONSTANTS.TABLE_SYSTEM, "readonly").objectStore(CONSTANTS.TABLE_SYSTEM).get(keyName);
+            req.onsuccess = () => resolve(req.result ? req.result.value : null);
+         });
+    },
+    
+    async setSysVal(keyName, val) {
+         return new Promise((resolve) => {
+            const store = this.db.transaction(CONSTANTS.TABLE_SYSTEM, "readwrite").objectStore(CONSTANTS.TABLE_SYSTEM);
+            store.put({ key: keyName, value: val });
+            store.transaction.oncomplete = () => resolve();
+         });
+    }
+};
+
+/* ---------------------------------------------------
+ *   Engine: Reglas y Estado "Aplication Core Logics"
+ * --------------------------------------------------- */
+const AppCore = {
+    // Array in-memory Cache tras arrancar SPA
+    items: [],
+
+    async boot() {
+        await DBClient.connect();
+        
+        this.items = await DBClient.getAllClothes();
+        // Carga Defaults la PRIMERA VEZ
+        if (this.items.length === 0) {
+            for (let defaultData of DEFAULT_INVENTORY) {
+                await DBClient.putCloth(defaultData);
+            }
+            this.items = await DBClient.getAllClothes();
+        }
+
+        // Loop Constante Tiempo Y Revisión Regla Limite "Treshold Cycle". Corre cada carga + repeticion minutaria (SetInterval global abajo).
+        await this.run18PMThresholdCheck();
+
+        // Enceder App Visuals Reactivas
+        UIControls.initEvents();
+        this.renderAllPanels();
+    },
+
+    // 🔴 6:00 PM LIMIT - EL CENTRO NERVIOSO LOGICO. "Yo me cambio a las 6" y es ciclo.
+    // Retorna timestamp ancla del ciclo valiente más cercano antes a HOY y lo cruza para trigger de acción
+    getCycleAnchorStamp(checkDate = new Date()) {
+        const _dateCopy = new Date(checkDate);
+        if (_dateCopy.getHours() >= CONSTANTS.CYCLE_HOUR) {
+             // El umbral se abrió hoy a las 6:00pm. Todo seleccionado HOY DESPUES de esa hora forma del dia "actual cycle".
+             _dateCopy.setHours(CONSTANTS.CYCLE_HOUR, 0, 0, 0); 
+        } else {
+             // Es antes de las 6PM hoy. Estamos montados aún en "la guagua y fecha" que inició en Ayer. Ayer cuenta.
+             _dateCopy.setDate(_dateCopy.getDate() - 1);
+             _dateCopy.setHours(CONSTANTS.CYCLE_HOUR, 0, 0, 0); 
+        }
+        return _dateCopy.getTime();
+    },
+
+    async run18PMThresholdCheck() {
+        // ¿Cuál es el ultimo chequeo de sistema histórico? Si se quedó atrazada se ensuciaran tras el cálculo de las líneas a la inversa con time...
+        let lastKnownCheckedCycleTimeStamp = await DBClient.getSysVal('last_completed_cycle');
+        let currentRealCycleTimeStamp = this.getCycleAnchorStamp(new Date());
+
+        // Update reloj de vista... UI Time clock Header... no pesa. Simple DOM Node override de string literal...  17:34 por decir:
+        document.getElementById('clock-display').innerText = new Date().toLocaleTimeString('es', {hour: '2-digit', minute:'2-digit'});
+
+        if (!lastKnownCheckedCycleTimeStamp) {
+            // Recién arrancada primera de primeras.. no forzamos nada aún solo seteamos inicio
+            await DBClient.setSysVal('last_completed_cycle', currentRealCycleTimeStamp);
+            return;
+        }
+
+        // PASARON LAS 6 - ¡HACER REPLICA MAGICA DIRTY CICLE OFF !
+        if (currentRealCycleTimeStamp > lastKnownCheckedCycleTimeStamp) {
+            
+            let enUsoArrayNow = this.items.filter(i => i.state === 'En Uso');
+            
+            if(enUsoArrayNow.length > 0) {
+                // Hay gente que madurar a sucia por ciclo completado de las manillas del dios tiempo
+                await DBClient.updateMultipleStates(enUsoArrayNow.map(o => o.id), "Sucio");
+                
+                // Pop Alarm Graphic to User PWA Screen... Han Dado Las 6!! 
+                document.getElementById('modal-6pm').classList.remove('hidden');
+            }
+            // Se actualizó check limit: No procesará hasta las prx 18Hrs. Magia!
+            await DBClient.setSysVal('last_completed_cycle', currentRealCycleTimeStamp); 
+            // Update cache array DB PULL local! (sync PWA SPA view again since state change en-DB )
+            this.items = await DBClient.getAllClothes();
+            this.renderAllPanels();
+        }
+    },
+
+    // FUNCIONES UI ACTION TRIGGER //
+
+    async suggestOutfit() {
+        const limpiosF = this.items.filter(i => i.type === 'franela' && i.state === 'Limpio');
+        const limpiosS = this.items.filter(i => i.type === 'short' && i.state === 'Limpio');
+        
+        if(limpiosF.length === 0 || limpiosS.length === 0) {
+            alert('❌ ¡Necesitas al menos 1 franela limpia y 1 short limpio para tener outfit! Lava primero.'); return;
+        }
+
+        // Return al Closet si estabas en uno y estas reemplazándolo manualmente (sobre-escribiendo manualmente el set current actual sin esperar). En un sistema complejo pasa todo por lavadoras pero asumo si cambio a pulgar antes del horario se equivoco. Lo volvemos 'Limpio'.
+        const actualSet = this.items.filter(i => i.state === 'En Uso');
+        await DBClient.updateMultipleStates(actualSet.map(i=>i.id), "Limpio");
+        
+        const randomF = limpiosF[Math.floor(Math.random() * limpiosF.length)];
+        const randomS = limpiosS[Math.floor(Math.random() * limpiosS.length)];
+        
+        // Colocar new set A: Uso Current state DB indexdb Save ... and array actual update! PWA Logic in JS Only! Yes.. So fun... no network
+        await DBClient.updateMultipleStates([randomF.id, randomS.id], "En Uso");
+        this.items = await DBClient.getAllClothes(); // Sync 100
+        
+        document.getElementById('modal-6pm').classList.add('hidden'); // cerra alerta de forzado si venimos clickand de modal limite 6pm trigger alert "Ya vístete!!" modal action hook en botón  ...  Pum
+        
+        this.renderAllPanels();
+    },
+
+    async lavadoraCestoMass() {
+        const suciosIdList = this.items.filter(i => i.state === 'Sucio').map(s=>s.id);
+        if(suciosIdList.length > 0) {
+             await DBClient.updateMultipleStates(suciosIdList, 'Limpio');
+             this.items = await DBClient.getAllClothes();
+             this.renderAllPanels();
+        }
+    },
+
+    async moveItemState(id, newState) {
+        await DBClient.updateMultipleStates([id], newState);
+        this.items = await DBClient.getAllClothes();
+        this.renderAllPanels();
+    },
+
+    async addLocalPiece(desc, type, colorHex) {
+        const prendaCleanObjetoIDBLifeNewItemTemplateFormAddedFromDomObjcetUserSpaceCreatedAndApprovedForIdBServerPushSaveDataFormatLiteralInCodeLikeRequestedForDescriptionApproachModelArchitecture = { 
+           desc, type, color: colorHex, state: 'Limpio', timestamp: Date.now() 
+        }; // Uff the text description model is super reliable. Clean 
+        await DBClient.putCloth(prendaCleanObjetoIDBLifeNewItemTemplateFormAddedFromDomObjcetUserSpaceCreatedAndApprovedForIdBServerPushSaveDataFormatLiteralInCodeLikeRequestedForDescriptionApproachModelArchitecture);
+        this.items = await DBClient.getAllClothes(); // re feed arr buffer...
+        this.renderAllPanels();
+    },
+
+
+    /* --------- MOTOR RENDER RE-FLOW ENGINE ----------------- */
+    
+    // helper html string gen loop
+    generateUIHTMLCard(clothData) {
+        const { id, type, desc, color, state } = clothData;
+        const iconTypeMapTypeHtmlIconsIconEmojiSysLogicStringLiteralInjectFormatEngineVarConstMapRenderUIStringPwaGenBlock = type === 'franela' ? '👕' : '🩳';
+        let actionHTMLRenderActionsSysUiPwaStringDOMGeneratNodeStrLogic = ``;
+
+        // Genera acciones con context actions per card por state: Si es limpia permitira Dañar en uso al reparar list! "Taller.. oh se me ropio una boton".. "A Taller".. (A mi franela me lo ropio el pitbull jaja!) ok ... asi.
+        if (state === 'Limpio') { 
+            actionHTMLRenderActionsSysUiPwaStringDOMGeneratNodeStrLogic = `<button class="btn-sm-repair" onclick="AppCore.moveItemState(${id}, 'En Reparación')">❌ Reparar</button>`; 
+        } 
+        else if (state === 'En Reparación') {
+            actionHTMLRenderActionsSysUiPwaStringDOMGeneratNodeStrLogic = `<button class="btn-sm-fix" onclick="AppCore.moveItemState(${id}, 'Limpio')">✅ ¡Ya regresó!</button>`; 
+        } 
+        else if (state === 'Sucio') { 
+             actionHTMLRenderActionsSysUiPwaStringDOMGeneratNodeStrLogic = `<span style="font-size:0.8rem">🧺 Al cesto!</span>`;
+        }
+
+        return `
+            <div class="cloth-card">
+               <div class="cloth-info">
+                   <!-- El SWATCH del que te hable q reemplazaba foto redimiensonada... mira es este el que inyectamos css custom attr string!! Color selector logic local approach visual!   ... -> No se requiere HTMLCanvas! -->
+                   <div class="cloth-color-swatch" style="background-color: ${color}"></div>
+                   <div class="cloth-meta">
+                        <h4>${iconTypeMapTypeHtmlIconsIconEmojiSysLogicStringLiteralInjectFormatEngineVarConstMapRenderUIStringPwaGenBlock} ${desc}</h4>
+                        <span style="color:${state === 'Limpio'? 'var(--neon-green)': 'var(--text-secondary)'}">${state}</span>
+                   </div>
+               </div>
+               <div class="cloth-actions">${actionHTMLRenderActionsSysUiPwaStringDOMGeneratNodeStrLogic}</div>
+            </div>
+        `;
+    },
+
+    renderAllPanels() {
+        // Separa Buffer states y listas de vista DOM. Esto en memoria array Cache para rapid access JS execution loops.. IndexedDb Pasa un Array! filter simple logic! Todo 1 solo hilo y muy estable SPA!! Mobile! Si!
+
+        // [ALARM SYSTEM LAUNDRY MATH MINIMA FUN] Logica Negocio: min ropa limpios! < 2 = Alert. Yes, exact math req. (Pairs Logic Limit Sys). Yes Boss 
+        const cntFranelasLimpiaLimpiezaValReqValLenLenTotalArrLogicVarLenGetTFromLenDataMemVarValGetCountLogic = this.items.filter(i=>i.type==='franela'&&i.state==='Limpio').length;
+        const cntShortsLimpiaVarLengthPushedL = this.items.filter(i=>i.type==='short'&&i.state==='Limpio').length;
+        
+        // Pairs! El outfit consiste min: 1 fr + 1 sr!! Limitador! Combinable! Total Max = minimo comun divisor total Math Limit: MInimal Val en Array Pairs Valid Array count (Math Logic App Minima! The requriments "1x Franla 1xshort = 1 Set Outfit..  Val  menor a dos mudas!!!
+        const minConjuntosPairCountValueValToRenderUiView = Math.min(cntFranelasLimpiaLimpiezaValReqValLenLenTotalArrLogicVarLenGetTFromLenDataMemVarValGetCountLogic, cntShortsLimpiaVarLengthPushedL); 
+
+        // Update Text Dom Num
+        document.getElementById('clean-sets-count').innerText = minConjuntosPairCountValueValToRenderUiView;
+
+        if (minConjuntosPairCountValueValToRenderUiView < 2) { document.getElementById('urgent-alert').classList.remove('hidden'); } 
+        else { document.getElementById('urgent-alert').classList.add('hidden'); }
+
+
+        // PANELS FILL & WIPE PRE RE REDER (Vanilla JS App-Render LifeCycles Hook Manual Override Function Node Pwa Set View Array loop html Join Inyction String.. Yes ... Vanilla!)
+
+        // Panel Hoy... Loop for use: .. find array with Uso Flag
+        let currentArrayToRenderUiNowUseLimitStateAppRenderEngineLogicDOMRenderFunctionObjHtml = this.items.filter(i=> i.state === 'En Uso');
+        if(currentArrayToRenderUiNowUseLimitStateAppRenderEngineLogicDOMRenderFunctionObjHtml.length === 0){
+             document.getElementById('current-outfit').innerHTML = '<p class="no-data">Desnudo/a. Pulsa "Sugerir Outfit" 👇🏼.</p>';
+        } else {
+             document.getElementById('current-outfit').innerHTML = `<div class="combo">` + currentArrayToRenderUiNowUseLimitStateAppRenderEngineLogicDOMRenderFunctionObjHtml.map(pwaClothStr=> `<div class="combo-item"><div class="cloth-color-swatch" style="background-color:${pwaClothStr.color}"></div> ${pwaClothStr.desc}</div>`).join('') + `</div>`;
+        }
+        
+        // Puntos Lista Clean ARMARIO  DOM render list HTML Gen join Inject  .. Si!!
+        document.getElementById('clean-list').innerHTML = this.items.filter(x => x.state === 'Limpio').map(cl => this.generateUIHTMLCard(cl)).join('') || '<em>Vacío.. Lava y saca lo que hay..</em>';
+
+        // Puntos List Sucio y TallerDOM  Render  UI .. Cesto 
+        document.getElementById('dirty-list').innerHTML = this.items.filter(x => x.state === 'Sucio').map(cl => this.generateUIHTMLCard(cl)).join('') || '<em>Cesto perfecamente reluciente (No hay ropa)✨</em>';
+        document.getElementById('repair-list').innerHTML = this.items.filter(x => x.state === 'En Reparación').map(cl => this.generateUIHTMLCard(cl)).join('') || '<em>Sin nada a componer o mandar costura👍</em>';
+
+    }
+};
+
+/* ---------------------------------------------------
+ *  Interacciones DOM (Tab Bar SPA Nav / Form Events) PWA Controls Events Binding App Sys Local Browser Limit Vanilla Hook Sys Ev.
+ * --------------------------------------------------- */
+const UIControls = {
+    initEvents() {
+        
+        // Tab system Navigate Bottom Logic Pwa Tabs Native iOS Native Look & App logic Native Feeling
+        document.querySelectorAll('.bottom-nav .nav-item').forEach(itemBtn => {
+             itemBtn.addEventListener('click', () => {
+                 document.querySelectorAll('.bottom-nav .nav-item').forEach(i=> i.classList.remove('active'));
+                 itemBtn.classList.add('active');
+                 
+                 document.querySelectorAll('section.view').forEach(s => s.classList.remove('active'));
+                 document.getElementById(itemBtn.getAttribute('data-target')).classList.add('active');
+             });
+        });
+
+        // 6PM "Te Ensuciaste Compa" modal - Action For Select A Suggest Btn ! Logic. Select! Bam
+        document.getElementById('btn-close-6pm').addEventListener('click', async () => {
+            await AppCore.suggestOutfit(); 
+            // modal is hiddn with suggesting override local view control view render function flow action override trigger. BAM. Yes Senior limit!
+        });
+
+        // Event listener button main "Sugier Outfit "
+        document.getElementById('btn-suggest').addEventListener('click', () => AppCore.suggestOutfit() );
+
+        // Event listener botón PWA "lavame mi basuero " 
+        document.getElementById('btn-wash-all').addEventListener('click', () => AppCore.lavadoraCestoMass() );
+
+        // Insert new object UI Event (prevent defalt, push string text format Pwa Limit) "ACA NO SUBE CANVAS. Y ESTA BN! Asi como pidio..." . Desc color. Bam. IndexedDB guard local limit  - no img - Text and C - 
+        document.getElementById('form-add').addEventListener('submit', async (evnTriggerControlAppSubmit) => {
+             evnTriggerControlAppSubmit.preventDefault();
+             let iptDesValTargetRefUIHTMLFormDescIdbSaveLimitReq = document.getElementById('input-desc').value.trim();
+             let iptTypeId = document.getElementById('input-type').value;
+             let colIdVarV = document.getElementById('input-color').value;
+
+             if(!iptDesValTargetRefUIHTMLFormDescIdbSaveLimitReq) return;
+             
+             await AppCore.addLocalPiece(iptDesValTargetRefUIHTMLFormDescIdbSaveLimitReq, iptTypeId, colIdVarV);
+
+             // Resetr visual UX limit app render func! Clear.. (keep color and Type is ok visual user repeat input save times! Mobile UX pattern speed.)
+             document.getElementById('input-desc').value = ""; 
+        });
+
+        // Clock check Interval logic
+        setInterval(() => {
+             AppCore.run18PMThresholdCheck(); // Ticks Every Min.. checks if clock pass 18.. will pop it on realtime native offline... Super offline!! Wow.. Indexed DB Power.!  Told U JS limits .. Are Not. App...  So ... Yes Limit 1 min
+        }, 60000); 
+
+    }
+}
+
+
+// Arranque Oficial SPA PWA! Wait dom render y dispara Base logicas index DB de App Core
+window.addEventListener('DOMContentLoaded', () => { AppCore.boot(); });
